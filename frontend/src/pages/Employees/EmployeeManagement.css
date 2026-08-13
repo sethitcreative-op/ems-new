@@ -1,0 +1,306 @@
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  opacity: 0;
+  animation: fadeIn 0.2s forwards;
+}
+
+.modal-content {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 30px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  transform: translateY(20px) scale(0.95);
+  opacity: 0;
+  animation: slideUpFade 0.3s 0.1s forwards cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+}
+
+.emp-grid-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.emp-grid-form .btn {
+  margin-top: 10px;
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+@keyframes slideUpFade {
+  to { 
+    transform: translateY(0) scale(1);
+    opacity: 1; 
+  }
+}
+
+.role-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.role-badge.admin {
+  background: #8b5cf6;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
+}
+
+.role-badge.user {
+  background: #3b82f6;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.action-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0,0,0,0.04);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-pill.edit {
+  color: #3b82f6;
+}
+.action-pill.edit:hover {
+  background: #3b82f6;
+  color: white;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
+}
+
+.action-pill.delete {
+  color: #ef4444;
+}
+.action-pill.delete:hover {
+  background: #ef4444;
+  color: white;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Staggered Animations */
+.page-header {
+  animation: fade-in-down-emp 0.5s ease both;
+}
+.table-container {
+  animation: fade-in-up-emp 0.5s ease 0.2s both;
+}
+
+@keyframes fade-in-down-emp {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in-up-emp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Employee Details Modal Styles */
+.details-modal {
+  max-width: 700px !important;
+  padding: 0 !important; /* Remove default padding to allow edge-to-edge tabs */
+  overflow: hidden;
+}
+
+.details-modal .modal-header {
+  padding: 24px 30px 16px 30px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.details-header-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar-large {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 600;
+  box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+}
+
+.emp-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rate-badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.details-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--card-border);
+  background: rgba(0, 0, 0, 0.02);
+  padding: 0 30px;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  padding: 16px 20px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+[data-theme="light"] .tab-btn:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.details-body {
+  padding: 24px 30px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.small-table th, .small-table td {
+  padding: 12px 16px;
+  font-size: 0.85rem;
+}
+
+.empty-cell {
+  text-align: center;
+  padding: 40px !important;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.type-badge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+[data-theme="light"] .type-badge {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-badge.approved { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.status-badge.pending { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.status-badge.rejected { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+/* Clickable Row */
+.clickable-row {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.clickable-row:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+[data-theme="light"] .clickable-row:hover {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
