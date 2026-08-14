@@ -32,11 +32,13 @@ elseif ($method === 'POST') {
     
     $is_admin_assigning = isset($data->is_admin_assigning) ? $data->is_admin_assigning : false;
     $status = $data->status ?? 'pending';
+    $approved_by_name = null;
     if ($is_admin_assigning) {
         $status = 'approved';
+        $approved_by_name = $data->admin_name ?? 'System Administrator';
     }
 
-    $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status) VALUES (:user_id, :title, :description, :event_date, :event_type, :status)";
+    $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, approved_by_name) VALUES (:user_id, :title, :description, :event_date, :event_type, :status, :approved_by_name)";
     $stmt = $conn->prepare($query);
     try {
         $stmt->execute([
@@ -45,7 +47,8 @@ elseif ($method === 'POST') {
             ':description' => $description, 
             ':event_date' => $event_date,
             ':event_type' => $event_type,
-            ':status' => $status
+            ':status' => $status,
+            ':approved_by_name' => $approved_by_name
         ]);
         
         if ($is_admin_assigning) {
@@ -74,33 +77,113 @@ elseif ($method === 'PUT') {
         $event_type = $data->event_type ?? 'Other';
         $user_id = $data->user_id ?? 0;
         
-        $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id WHERE id = :id";
-        $stmt = $conn->prepare($query);
-        try {
-            $stmt->execute([
-                ':title' => $title,
-                ':description' => $description,
-                ':event_date' => $event_date,
-                ':event_type' => $event_type,
-                ':user_id' => $user_id,
-                ':id' => $event_id
-            ]);
-            echo json_encode(["status" => "success", "message" => "Event updated successfully"]);
-        } catch(PDOException $e) {
-            echo json_encode(["status" => "error", "message" => "Could not update event details: " . $e->getMessage()]);
+        $status = $data->status ?? null;
+        
+        // Check if event is currently approved
+        $checkStmt = $conn->prepare("SELECT status FROM events WHERE id = :id");
+        $checkStmt->execute([':id' => $event_id]);
+        $currentEvent = $checkStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($currentEvent && $currentEvent['status'] === 'approved') {
+            // It's already approved. Create a NEW pending request linked to this one
+            $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, reschedule_for_event_id) VALUES (:user_id, :title, :description, :event_date, :event_type, 'pending', :original_id)";
+            $stmt = $conn->prepare($query);
+            try {
+                $stmt->execute([
+                    ':user_id' => $user_id,
+                    ':title' => $title,
+                    ':description' => $description,
+                    ':event_date' => $event_date,
+                    ':event_type' => $event_type,
+                    ':original_id' => $event_id
+                ]);
+                echo json_encode(["status" => "success", "message" => "Reschedule request created successfully"]);
+            } catch(PDOException $e) {
+                echo json_encode(["status" => "error", "message" => "Could not create reschedule request: " . $e->getMessage()]);
+            }
+        } else {
+            // It's pending/rejected, just update in place
+            if ($status) {
+                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id, status = :status WHERE id = :id";
+            } else {
+                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id WHERE id = :id";
+            }
+            $stmt = $conn->prepare($query);
+            try {
+                $params = [
+                    ':title' => $title,
+                    ':description' => $description,
+                    ':event_date' => $event_date,
+                    ':event_type' => $event_type,
+                    ':user_id' => $user_id,
+                    ':id' => $event_id
+                ];
+                if ($status) {
+                    $params[':status'] = $status;
+                }
+                $stmt->execute($params);
+                echo json_encode(["status" => "success", "message" => "Event updated successfully"]);
+            } catch(PDOException $e) {
+                echo json_encode(["status" => "error", "message" => "Could not update event details: " . $e->getMessage()]);
+            }
         }
     } else {
         $status = $data->status;
         
         // Fetch event info to know who to notify
-        $stmt = $conn->prepare("SELECT user_id, title FROM events WHERE id = :id");
+        $stmt = $conn->prepare("SELECT user_id, title, description, event_date, event_type, reschedule_for_event_id FROM events WHERE id = :id");
         $stmt->execute([':id' => $event_id]);
         $event = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        $query = "UPDATE events SET status = :status WHERE id = :id";
+        $approved_by_name = $data->approved_by_name ?? null;
+
+        // If this is an approval for a reschedule request
+        if ($status === 'approved' && $event && !empty($event['reschedule_for_event_id'])) {
+            $updateOrig = $conn->prepare("UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, approved_by_name = :approved_by_name WHERE id = :orig_id");
+            try {
+                $updateOrig->execute([
+                    ':title' => $event['title'],
+                    ':description' => $event['description'],
+                    ':event_date' => $event['event_date'],
+                    ':event_type' => $event['event_type'],
+                    ':approved_by_name' => $approved_by_name,
+                    ':orig_id' => $event['reschedule_for_event_id']
+                ]);
+                
+                // Delete the temporary reschedule request row
+                $conn->prepare("DELETE FROM events WHERE id = :id")->execute([':id' => $event_id]);
+                
+                $admin_id = isset($data->admin_id) ? $data->admin_id : 0; 
+                logAction($conn, $admin_id, 'APPROVE_RESCHEDULE', "Approved reschedule request. Applied to original event {$event['reschedule_for_event_id']}.");
+                
+                $notif_message = "Your reschedule request \"{$event['title']}\" was approved and applied.";
+                $notif_stmt = $conn->prepare("INSERT INTO notifications (user_id, type, message) VALUES (:user_id, 'success', :message)");
+                $notif_stmt->execute([
+                    ':user_id' => $event['user_id'],
+                    ':message' => $notif_message
+                ]);
+                
+                echo json_encode(["status" => "success", "message" => "Reschedule applied to original event"]);
+                exit;
+            } catch(PDOException $e) {
+                echo json_encode(["status" => "error", "message" => "Could not apply reschedule: " . $e->getMessage()]);
+                exit;
+            }
+        }
+
+        $query = "UPDATE events SET status = :status";
+        if ($approved_by_name && $status === 'approved') {
+            $query .= ", approved_by_name = :approved_by_name";
+        }
+        $query .= " WHERE id = :id";
+        
         $stmt = $conn->prepare($query);
         try {
-            $stmt->execute([':status' => $status, ':id' => $event_id]);
+            $params = [':status' => $status, ':id' => $event_id];
+            if ($approved_by_name && $status === 'approved') {
+                $params[':approved_by_name'] = $approved_by_name;
+            }
+            $stmt->execute($params);
             
             $admin_id = isset($data->admin_id) ? $data->admin_id : 0; 
             logAction($conn, $admin_id, 'UPDATE_REQUEST', "Updated request ID {$event_id} status to {$status}.");

@@ -30,7 +30,9 @@ const ApprovalRequestsPage = () => {
     try {
       await axios.put(`${API_BASE}/calendar.php`, {
         id: id,
-        status: status
+        status: status,
+        admin_id: user.id,
+        approved_by_name: user.full_name
       });
       fetchRequests();
     } catch (err) {
@@ -74,7 +76,12 @@ const ApprovalRequestsPage = () => {
                     </td>
                     <td>{new Date(req.event_date).toLocaleDateString()}</td>
                     <td>
-                      <div><strong>{req.title}</strong></div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong>{req.title}</strong>
+                        {req.reschedule_for_event_id && (
+                          <span className="event-badge" style={{ padding: '2px 6px', fontSize: '0.7rem', background: 'var(--accent)', color: '#fff', border: 'none' }}>Reschedule</span>
+                        )}
+                      </div>
                       {req.description && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{req.description}</div>}
                     </td>
                     <td>

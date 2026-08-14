@@ -15,21 +15,23 @@ const ProfilePage = () => {
   const [formData, setFormData] = useState({
     username: '',
     full_name: '',
-    password: '',
-    profile_picture: null
+    password: ''
   });
+  const [profilePictureFile, setProfilePictureFile] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
   const { addNotification } = useNotification();
   const location = useLocation();
 
   useEffect(() => {
-    if (location.state?.openEditModal) {
+    if (location.state?.openEditModal && user?.role === 'admin') {
       if (user) {
         setFormData({
           username: user.username,
           full_name: user.full_name,
-          password: '',
-          profile_picture: user.profile_picture || null
+          password: ''
         });
+        setProfilePictureFile(null);
+        setPreviewImage(user.profile_picture || null);
         setShowEditModal(true);
         window.history.replaceState({}, '');
       }
@@ -49,9 +51,10 @@ const ProfilePage = () => {
     setFormData({
       username: user.username,
       full_name: user.full_name,
-      password: '',
-      profile_picture: user.profile_picture || null
+      password: ''
     });
+    setProfilePictureFile(null);
+    setPreviewImage(user.profile_picture || null);
     setError('');
     setShowEditModal(true);
   };
@@ -62,9 +65,23 @@ const ProfilePage = () => {
     setError('');
     
     try {
-      const res = await axios.put(`${API_BASE}/profile.php`, {
-        id: user.id,
-        ...formData
+      const data = new FormData();
+      data.append('id', user.id);
+      data.append('username', formData.username);
+      data.append('full_name', formData.full_name);
+      
+      if (formData.password) {
+        data.append('password', formData.password);
+      }
+      
+      if (profilePictureFile) {
+        data.append('profile_picture', profilePictureFile);
+      }
+      
+      const res = await axios.post(`${API_BASE}/profile.php`, data, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
       
       if (res.data.status === 'success') {
@@ -91,41 +108,21 @@ const ProfilePage = () => {
         setError('Please select a valid image file.');
         return;
       }
+      setProfilePictureFile(file);
       
       const reader = new FileReader();
       reader.onloadend = () => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 400;
-          const MAX_HEIGHT = 400;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-          setFormData({...formData, profile_picture: compressedBase64});
-        };
-        img.src = reader.result;
+        setPreviewImage(reader.result);
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const renderProfilePicture = (pic) => {
+    if (!pic) return null;
+    if (pic.startsWith('http') || pic.startsWith('data:image')) return pic;
+    if (pic.startsWith('img/')) return `/${pic}`;
+    return `${API_BASE.replace('/api', '')}/${pic}`;
   };
 
   const memberSince = new Date(user.created_at);
@@ -156,7 +153,7 @@ const ProfilePage = () => {
           <div className="hero-avatar-ring">
             <div className="hero-avatar">
               {user.profile_picture ? (
-                <img src={user.profile_picture} alt="Profile" />
+                <img src={renderProfilePicture(user.profile_picture)} alt="Profile" />
               ) : (
                 <span className="hero-avatar-letter">{user.full_name?.charAt(0) || 'U'}</span>
               )}
@@ -178,10 +175,12 @@ const ProfilePage = () => {
             </div>
           </div>
 
-          <button className="edit-profile-btn" onClick={openEditModal}>
-            <Edit2 size={16} />
-            <span>Edit Profile</span>
-          </button>
+          {user.role === 'admin' && (
+            <button className="edit-profile-btn" onClick={openEditModal}>
+              <Edit2 size={16} />
+              <span>Edit Profile</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -309,21 +308,21 @@ const ProfilePage = () => {
                 <div className="detail-icon"><Mail size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Email Address</span>
-                  <span className="detail-value muted-val">Not specified</span>
+                  <span className={`detail-value ${!user.email ? 'muted-val' : ''}`}>{user.email || 'Not specified'}</span>
                 </div>
               </div>
               <div className="detail-row">
                 <div className="detail-icon"><Phone size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Phone Number</span>
-                  <span className="detail-value muted-val">Not specified</span>
+                  <span className={`detail-value ${!user.phone ? 'muted-val' : ''}`}>{user.phone || 'Not specified'}</span>
                 </div>
               </div>
               <div className="detail-row">
                 <div className="detail-icon"><MapPin size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Address</span>
-                  <span className="detail-value muted-val">Not specified</span>
+                  <span className={`detail-value ${!user.address ? 'muted-val' : ''}`}>{user.address || 'Not specified'}</span>
                 </div>
               </div>
             </div>
@@ -346,7 +345,7 @@ const ProfilePage = () => {
                 <div className="detail-icon"><Shield size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">ID Number</span>
-                  <span className="detail-value muted-val">Not specified</span>
+                  <span className={`detail-value ${!user.id_number ? 'muted-val' : ''}`}>{user.id_number || 'Not specified'}</span>
                 </div>
               </div>
             </div>
@@ -393,8 +392,8 @@ const ProfilePage = () => {
             <form onSubmit={handleSubmit} className="modal-form">
               <div className="modal-avatar-section">
                 <div className="modal-avatar-preview">
-                   {formData.profile_picture ? (
-                     <img src={formData.profile_picture} alt="Preview" />
+                   {previewImage ? (
+                     <img src={renderProfilePicture(previewImage)} alt="Preview" />
                    ) : (
                      <User size={36} style={{ opacity: 0.4 }} />
                    )}

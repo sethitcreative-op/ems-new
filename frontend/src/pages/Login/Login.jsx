@@ -1,15 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Lock, User } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, Activity, CheckCircle } from 'lucide-react';
 import './Login.css';
 import API_BASE from '../../config/api';
+
+const backgroundImages = [
+  'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?auto=format&fit=crop&q=80'
+];
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [bgIndex, setBgIndex] = useState(0);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setBgIndex((prevIndex) => (prevIndex + 1) % backgroundImages.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -36,16 +52,38 @@ const Login = () => {
   return (
     <div className="login-container">
       <div className="login-left-pane">
+        {backgroundImages.map((img, index) => (
+          <div
+            key={index}
+            className={`slideshow-bg ${bgIndex === index ? 'active' : ''}`}
+            style={{ backgroundImage: `url('${img}')` }}
+          />
+        ))}
+        <div className="slideshow-overlay" />
+
+        <div className="floating-elements">
+          <div className="float-card card-1 glass">
+            <div className="card-icon"><Activity size={24} /></div>
+            <div className="card-info">
+              <h4>Active Users</h4>
+              <p>2,543</p>
+            </div>
+          </div>
+          <div className="float-card card-2 glass">
+            <div className="card-icon success"><CheckCircle size={24} /></div>
+            <div className="card-info">
+              <h4>System Status</h4>
+              <p>Online</p>
+            </div>
+          </div>
+        </div>
+
         <div className="brand-content">
           <div className="brand-icon-wrapper">
             <div className="logo-icon-huge">E</div>
           </div>
-          <h1 className="brand-title">EMS Pro</h1>
+          <h1 className="brand-title">Schedule Management<br />Tracker</h1>
           <p className="brand-subtitle">Elevate your workforce with our state-of-the-art management system.</p>
-          <div className="floating-elements">
-            <div className="float-card card-1 glass"></div>
-            <div className="float-card card-2 glass"></div>
-          </div>
         </div>
       </div>
 
@@ -60,27 +98,49 @@ const Login = () => {
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
-              <User size={20} className="input-icon" />
-              <input 
-                type="text" 
-                className="input-field" 
-                placeholder="Username" 
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-              />
+              <label className="input-label">User name:</label>
+              <div className="input-wrapper">
+                <User size={20} className="input-icon" />
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Enter your username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                />
+              </div>
             </div>
-            
+
             <div className="input-group">
-              <Lock size={20} className="input-icon" />
-              <input 
-                type="password" 
-                className="input-field" 
-                placeholder="Password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <label className="input-label">Password:</label>
+              <div className="input-wrapper">
+                <Lock size={20} className="input-icon" />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  className="input-field"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="form-actions">
+              <label className="remember-me">
+                <input type="checkbox" />
+                <span>Remember me</span>
+              </label>
+              <a href="#" className="forgot-password" onClick={(e) => e.preventDefault()}>Forgot password?</a>
             </div>
 
             <button type="submit" className="btn btn-primary login-btn">

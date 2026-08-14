@@ -18,7 +18,7 @@ const ScheduleTrackerPage = () => {
   const [formData, setFormData] = useState({
     user_id: '',
     event_date: '',
-    event_type: 'Working Schedule',
+    event_type: 'WS',
     title: '',
     description: ''
   });
@@ -47,16 +47,16 @@ const ScheduleTrackerPage = () => {
 
   const uniqueEmployees = [...new Set(events.map(e => e.user_name))];
 
-  const getStatusBadge = (status) => {
-    switch (status) {
+  const getStatusBadge = (evt) => {
+    switch (evt.status) {
       case 'approved':
-        return <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 500, fontSize: '0.85rem' }}><span className="status-dot approved"></span>Approved</span>;
+        return <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--success)', fontWeight: 500, fontSize: '0.85rem' }}><span className="status-dot approved"></span>Approved {evt.approved_by_name ? `by ${evt.approved_by_name}` : ''}</span>;
       case 'rejected':
         return <span className="event-badge" style={{ cursor: 'default', background: '#ef4444', color: '#ffffff', border: 'none', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.3)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>Rejected</span>;
       case 'pending':
         return <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--warning)', fontWeight: 500, fontSize: '0.85rem' }}><span className="status-dot pending"></span>Pending</span>;
       default:
-        return <span>{status}</span>;
+        return <span>{evt.status}</span>;
     }
   };
 
@@ -113,7 +113,7 @@ const ScheduleTrackerPage = () => {
           alert("Schedule updated successfully!");
           setIsModalOpen(false);
           setEditingEventId(null);
-          setFormData({ user_id: '', event_date: '', event_type: 'Working Schedule', title: '', description: '' });
+          setFormData({ user_id: '', event_date: '', event_type: 'WS', title: '', description: '' });
           fetchSchedules();
         } else {
           alert("Failed to update schedule. Server responded with: " + (typeof res.data === 'object' ? JSON.stringify(res.data) : res.data));
@@ -121,12 +121,13 @@ const ScheduleTrackerPage = () => {
       } else {
         const res = await axios.post(`${API_BASE}/calendar.php`, {
           ...formData,
-          is_admin_assigning: true
+          is_admin_assigning: true,
+          admin_name: user.full_name
         });
         if (res.data.status === 'success') {
           alert("Schedule assigned successfully!");
           setIsModalOpen(false);
-          setFormData({ user_id: '', event_date: '', event_type: 'Working Schedule', title: '', description: '' });
+          setFormData({ user_id: '', event_date: '', event_type: 'WS', title: '', description: '' });
           fetchSchedules();
         } else {
           alert("Failed to assign schedule: " + res.data.message);
@@ -155,7 +156,7 @@ const ScheduleTrackerPage = () => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this schedule?')) {
       try {
-        const res = await axios.delete(`${API_BASE}/calendar.php?id=${id}&is_admin=true`);
+        const res = await axios.delete(`${API_BASE}/calendar.php?id=${id}&is_admin=true&user_id=${user.id}`);
         if (res.data.status === 'success') {
           fetchSchedules();
         } else {
@@ -172,7 +173,7 @@ const ScheduleTrackerPage = () => {
     <div className="page-container">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
-          <h1 className="page-title" style={{ fontSize: '1.4rem', fontWeight: 600, marginBottom: '4px', color: 'white' }}>Schedule Tracker</h1>
+          <h1 className="page-title" style={{ fontSize: '1.4rem', fontWeight: 600, marginBottom: '4px', color: 'white' }}>Change Schedule Tracker</h1>
           <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Track schedules and leave dates for all employees.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -199,7 +200,7 @@ const ScheduleTrackerPage = () => {
 
           <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => {
             setEditingEventId(null);
-            setFormData({ user_id: '', event_date: '', event_type: 'Working Schedule', title: '', description: '' });
+            setFormData({ user_id: '', event_date: '', event_type: 'WS', title: '', description: '' });
             setIsModalOpen(true);
           }}>
             <Plus size={16} /> New Schedule
@@ -239,16 +240,39 @@ const ScheduleTrackerPage = () => {
                         {new Date(evt.event_date).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
                       <td>
-                        <span style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa', padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>
-                          {evt.event_type}
-                        </span>
+                        {(() => {
+                          let Icon = null;
+                          let textColor = '#64748b';
+                          let bgColor = 'rgba(100, 116, 139, 0.2)';
+                          
+                          if (evt.event_type === 'WS' || evt.title === 'Work Shift') {
+                            Icon = '💼';
+                            textColor = '#10b981'; // Green
+                            bgColor = 'rgba(16, 185, 129, 0.2)';
+                          } else if (evt.event_type === 'VL') {
+                            Icon = '🌴';
+                            textColor = '#3b82f6'; // Blue
+                            bgColor = 'rgba(59, 130, 246, 0.2)';
+                          } else if (evt.event_type === 'HL' || evt.event_type === 'Holiday') {
+                            Icon = '🎉';
+                            textColor = '#8b5cf6'; // Purple
+                            bgColor = 'rgba(139, 92, 246, 0.2)';
+                          }
+                          
+                          return (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: bgColor, color: textColor, padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600 }}>
+                              {Icon && <span style={{ fontSize: '14px', lineHeight: 1 }}>{Icon}</span>}
+                              {evt.event_type}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td>
                         <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>{evt.title}</div>
                         {evt.description && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{evt.description}</div>}
                       </td>
                       <td>
-                        {getStatusBadge(evt.status)}
+                        {getStatusBadge(evt)}
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '8px' }}>
@@ -322,13 +346,9 @@ const ScheduleTrackerPage = () => {
                   value={formData.event_type}
                   onChange={(e) => setFormData({...formData, event_type: e.target.value})}
                 >
-                  <option value="Working Schedule">Working Schedule</option>
-                  <option value="Meeting">Meeting</option>
+                  <option value="WS">Work Shift (WS)</option>
                   <option value="VL">Vacation Leave (VL)</option>
-                  <option value="SL">Sick Leave (SL)</option>
-                  <option value="PDO">Paid Day Off (PDO)</option>
-                  <option value="Holiday">Holiday</option>
-                  <option value="Other">Other</option>
+                  <option value="HL">Holiday (HL)</option>
                 </select>
               </div>
 
