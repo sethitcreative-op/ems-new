@@ -175,10 +175,6 @@ const Header = () => {
 
           {showProfileDropdown && (
             <div className="profile-dropdown glass">
-              <div className="profile-dropdown-header">
-                <span className="profile-name">{userState?.full_name || 'User'}</span>
-                <span className="profile-role">{userState?.role || 'Employee'}</span>
-              </div>
               <div className="profile-dropdown-body">
                 <button className="profile-dropdown-item" onClick={() => window.location.href = '/profile'}>
                   <User size={16} /> My Profile

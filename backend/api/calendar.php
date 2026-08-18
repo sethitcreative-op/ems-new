@@ -98,6 +98,16 @@ elseif ($method === 'PUT') {
                     ':event_type' => $event_type,
                     ':original_id' => $event_id
                 ]);
+                
+                $getOrig = $conn->prepare("SELECT event_date FROM events WHERE id = :orig_id");
+                $getOrig->execute([':orig_id' => $event_id]);
+                $origEvent = $getOrig->fetch(PDO::FETCH_ASSOC);
+                if ($origEvent) {
+                    $oldDate = $origEvent['event_date'];
+                    $insertAttendance = $conn->prepare("INSERT INTO attendance (user_id, date, status, total_hours, earnings) VALUES (:user_id, :old_date, 'Rescheduled', 0, 0) ON DUPLICATE KEY UPDATE status = 'Rescheduled'");
+                    $insertAttendance->execute([':user_id' => $user_id, ':old_date' => $oldDate]);
+                }
+
                 echo json_encode(["status" => "success", "message" => "Reschedule request created successfully"]);
             } catch(PDOException $e) {
                 echo json_encode(["status" => "error", "message" => "Could not create reschedule request: " . $e->getMessage()]);
@@ -140,6 +150,11 @@ elseif ($method === 'PUT') {
 
         // If this is an approval for a reschedule request
         if ($status === 'approved' && $event && !empty($event['reschedule_for_event_id'])) {
+            $getOrig = $conn->prepare("SELECT event_date FROM events WHERE id = :orig_id");
+            $getOrig->execute([':orig_id' => $event['reschedule_for_event_id']]);
+            $origEvent = $getOrig->fetch(PDO::FETCH_ASSOC);
+            $oldDate = $origEvent['event_date'];
+
             $updateOrig = $conn->prepare("UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, approved_by_name = :approved_by_name WHERE id = :orig_id");
             try {
                 $updateOrig->execute([
@@ -150,6 +165,9 @@ elseif ($method === 'PUT') {
                     ':approved_by_name' => $approved_by_name,
                     ':orig_id' => $event['reschedule_for_event_id']
                 ]);
+                
+                $insertAttendance = $conn->prepare("INSERT INTO attendance (user_id, date, status, total_hours, earnings) VALUES (:user_id, :old_date, 'Rescheduled', 0, 0) ON DUPLICATE KEY UPDATE status = 'Rescheduled'");
+                $insertAttendance->execute([':user_id' => $event['user_id'], ':old_date' => $oldDate]);
                 
                 // Delete the temporary reschedule request row
                 $conn->prepare("DELETE FROM events WHERE id = :id")->execute([':id' => $event_id]);
@@ -186,6 +204,17 @@ elseif ($method === 'PUT') {
             }
             $stmt->execute($params);
             
+            if ($status === 'rejected' && $event && !empty($event['reschedule_for_event_id'])) {
+                $getOrig = $conn->prepare("SELECT event_date FROM events WHERE id = :orig_id");
+                $getOrig->execute([':orig_id' => $event['reschedule_for_event_id']]);
+                $origEvent = $getOrig->fetch(PDO::FETCH_ASSOC);
+                if ($origEvent) {
+                    $oldDate = $origEvent['event_date'];
+                    $delAtt = $conn->prepare("DELETE FROM attendance WHERE user_id = :user_id AND date = :old_date AND status = 'Rescheduled'");
+                    $delAtt->execute([':user_id' => $event['user_id'], ':old_date' => $oldDate]);
+                }
+            }
+
             $admin_id = isset($data->admin_id) ? $data->admin_id : 0; 
             logAction($conn, $admin_id, 'UPDATE_REQUEST', "Updated request ID {$event_id} status to {$status}.");
             
@@ -240,10 +269,26 @@ elseif ($method === 'DELETE') {
         }
     }
     
+    $fetchStmt = $conn->prepare("SELECT user_id, reschedule_for_event_id FROM events WHERE id = :id");
+    $fetchStmt->execute([':id' => $event_id]);
+    $delEvent = $fetchStmt->fetch(PDO::FETCH_ASSOC);
+
     $query = "DELETE FROM events WHERE id = :id";
     $stmt = $conn->prepare($query);
     try {
         $stmt->execute([':id' => $event_id]);
+
+        if ($delEvent && !empty($delEvent['reschedule_for_event_id'])) {
+            $getOrig = $conn->prepare("SELECT event_date FROM events WHERE id = :orig_id");
+            $getOrig->execute([':orig_id' => $delEvent['reschedule_for_event_id']]);
+            $origEvent = $getOrig->fetch(PDO::FETCH_ASSOC);
+            if ($origEvent) {
+                $oldDate = $origEvent['event_date'];
+                $delAtt = $conn->prepare("DELETE FROM attendance WHERE user_id = :user_id AND date = :old_date AND status = 'Rescheduled'");
+                $delAtt->execute([':user_id' => $delEvent['user_id'], ':old_date' => $oldDate]);
+            }
+        }
+
         logAction($conn, $user_id, 'CANCEL_REQUEST', "Cancelled pending request ID {$event_id}.");
         echo json_encode(["status" => "success", "message" => "Request cancelled successfully"]);
     } catch(PDOException $e) {

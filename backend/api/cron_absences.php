@@ -18,6 +18,24 @@ try {
     foreach ($users as $user) {
         $user_id = $user['id'];
         
+        $targetStatus = 'Absent';
+
+        // 1. Check for Holiday
+        $holQuery = "SELECT id FROM holidays WHERE holiday_date = :dateToCheck";
+        $holStmt = $conn->prepare($holQuery);
+        $holStmt->execute([':dateToCheck' => $dateToCheck]);
+        if ($holStmt->fetch(PDO::FETCH_ASSOC)) {
+            $targetStatus = 'Holiday';
+        } else {
+            // 2. Check for Approved Leave
+            $leaveQuery = "SELECT id FROM events WHERE user_id = :user_id AND event_date = :dateToCheck AND status = 'approved' AND event_type IN ('VL', 'SL', 'PDO', 'Birthday', 'Meeting', 'Holiday')";
+            $leaveStmt = $conn->prepare($leaveQuery);
+            $leaveStmt->execute([':user_id' => $user_id, ':dateToCheck' => $dateToCheck]);
+            if ($leaveStmt->fetch(PDO::FETCH_ASSOC)) {
+                $targetStatus = 'Leave';
+            }
+        }
+
         // Check if the user has an attendance record for the specific date
         $checkQuery = "SELECT id, am_in, pm_out, status FROM attendance WHERE user_id = :user_id AND date = :dateToCheck";
         $checkStmt = $conn->prepare($checkQuery);
@@ -25,17 +43,23 @@ try {
         $record = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$record) {
-            // Missed both AM/PM punch - create an Absent record
-            $insertQuery = "INSERT INTO attendance (user_id, date, status, total_hours, earnings) VALUES (:user_id, :dateToCheck, 'Absent', 0, 0)";
+            // Missed both AM/PM punch - create record with target status
+            $insertQuery = "INSERT INTO attendance (user_id, date, status, total_hours, earnings) VALUES (:user_id, :dateToCheck, :status, 0, 0)";
             $insertStmt = $conn->prepare($insertQuery);
-            $insertStmt->execute([':user_id' => $user_id, ':dateToCheck' => $dateToCheck]);
-            $absentCount++;
-        } else if (!$record['am_in'] && !$record['pm_out'] && $record['status'] !== 'Absent') {
-            // Exists but both empty and not marked as Absent yet
-            $updateQuery = "UPDATE attendance SET status = 'Absent' WHERE id = :id";
-            $updateStmt = $conn->prepare($updateQuery);
-            $updateStmt->execute([':id' => $record['id']]);
-            $absentCount++;
+            $insertStmt->execute([':user_id' => $user_id, ':dateToCheck' => $dateToCheck, ':status' => $targetStatus]);
+            if ($targetStatus === 'Absent') $absentCount++;
+        } else {
+            $currentStatus = $record['status'];
+            // If no punches exist and current status is not a protected state
+            if (!$record['am_in'] && !$record['pm_out']) {
+                $protectedStatuses = ['Rescheduled', 'Leave', 'Holiday'];
+                if (!in_array($currentStatus, $protectedStatuses) && $currentStatus !== $targetStatus) {
+                    $updateQuery = "UPDATE attendance SET status = :status WHERE id = :id";
+                    $updateStmt = $conn->prepare($updateQuery);
+                    $updateStmt->execute([':status' => $targetStatus, ':id' => $record['id']]);
+                    if ($targetStatus === 'Absent') $absentCount++;
+                }
+            }
         }
     }
 

@@ -30,10 +30,10 @@ if ($action === 'clock_in') {
     $server_date = date('Y-m-d');
     $server_datetime = $server_date . ' ' . $server_time;
     
-    // Fetch the latest active shift (pm_out IS NULL) for the user
-    $fetch_query = "SELECT a.id, a.am_in, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.user_id = :user_id AND a.pm_out IS NULL ORDER BY a.date DESC LIMIT 1";
+    // Fetch the latest active shift (pm_out IS NULL) for the user for the current server date
+    $fetch_query = "SELECT a.id, a.am_in, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.user_id = :user_id AND a.pm_out IS NULL AND a.date = :server_date ORDER BY a.date DESC LIMIT 1";
     $fetch_stmt = $conn->prepare($fetch_query);
-    $fetch_stmt->execute([':user_id' => $user_id]);
+    $fetch_stmt->execute([':user_id' => $user_id, ':server_date' => $server_date]);
     $record = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($record && $record['am_in']) {
@@ -63,6 +63,22 @@ if ($action === 'clock_in') {
     }
 
 } elseif ($action === 'get_records') {
+    $server_date = date('Y-m-d');
+    
+    // Auto-close past open shifts (forgot to PM OUT) up to 23:59:59 of that day
+    $auto_close_query = "
+        UPDATE attendance a
+        JOIN users u ON a.user_id = u.id
+        SET a.pm_out = CONCAT(a.date, ' 23:59:59'),
+            a.total_hours = ROUND(TIMESTAMPDIFF(SECOND, a.am_in, CONCAT(a.date, ' 23:59:59')) / 3600, 2),
+            a.earnings = ROUND((TIMESTAMPDIFF(SECOND, a.am_in, CONCAT(a.date, ' 23:59:59')) / 3600) * u.hourly_rate, 2)
+        WHERE a.pm_out IS NULL 
+          AND a.am_in IS NOT NULL 
+          AND a.date < :server_date
+    ";
+    $auto_close_stmt = $conn->prepare($auto_close_query);
+    $auto_close_stmt->execute([':server_date' => $server_date]);
+
     $user_id = isset($_GET['user_id']) ? $_GET['user_id'] : null;
     if ($user_id) {
         $query = "SELECT a.*, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.user_id = :user_id ORDER BY a.date DESC";

@@ -14,7 +14,8 @@ const ActiveTimer = ({ activeShift }) => {
     let interval;
     if (activeShift && activeShift.am_in) {
       const calculateElapsed = () => {
-        const now = new Date();
+        const nowString = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+        const now = new Date(nowString);
         const amInStr = activeShift.am_in;
         const recordDate = activeShift.date;
         let amInDate;
@@ -61,11 +62,11 @@ const DtrPage = () => {
   const [employees, setEmployees] = useState([]);
   const { addNotification } = useNotification();
 
-  // Helper: get local date as YYYY-MM-DD (avoids UTC date shift from toISOString)
+  // Helper: get US date as YYYY-MM-DD to match the server time
   const getLocalDateStr = (date = new Date()) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const options = { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' };
+    const usDate = new Intl.DateTimeFormat('en-US', options).format(date);
+    const [month, day, year] = usDate.split('/');
     return `${year}-${month}-${day}`;
   };
 
@@ -338,10 +339,10 @@ const DtrPage = () => {
   // Clock Restrictions (Check for Active Shift and Today's Record)
   const todayDateStr = getLocalDateStr();
   const myRecords = records.filter(r => String(r.user_id) === String(user.id));
-  const myActiveShift = myRecords.find(r => r.am_in && !r.pm_out);
+  const myActiveShift = myRecords.find(r => r.am_in && !r.pm_out && r.date === todayDateStr);
   const myTodayRecord = myRecords.find(r => r.date === todayDateStr);
 
-  const displayActiveShift = tableRecords.find(r => r.am_in && !r.pm_out);
+  const displayActiveShift = tableRecords.find(r => r.am_in && !r.pm_out && r.date === todayDateStr);
   const displayTodayRecord = tableRecords.find(r => r.date === todayDateStr);
 
   const isAmInDisabled = loading || !!myActiveShift || !!myTodayRecord;
@@ -451,6 +452,9 @@ const DtrPage = () => {
     if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
     if (pdfColumns.rate) { tableColumn.push("RATE"); dataKeys.push("hourly_rate"); }
     if (pdfColumns.earnings) { tableColumn.push("EARNINGS"); dataKeys.push("earnings"); }
+    
+    tableColumn.push("STATUS");
+    dataKeys.push("status");
 
     let grandTotalHrs = 0;
     let grandTotalEarnings = 0;
@@ -468,14 +472,18 @@ const DtrPage = () => {
       }
 
       dataKeys.forEach(key => {
+        const isSpecialStatus = ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(record.status);
+        const displayStatus = record.status ? record.status.toUpperCase() : '';
+
         if (key === 'date') rowData.push(record.date);
+        if (key === 'status') rowData.push(displayStatus);
         if (key === 'full_name') rowData.push(record.full_name || user.full_name);
-        if (key === 'am_in') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
-        if (key === 'pm_out') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
-        if (key === 'total_hours') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
+        if (key === 'am_in') rowData.push(isSpecialStatus ? '---' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
+        if (key === 'pm_out') rowData.push(isSpecialStatus ? '---' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
+        if (key === 'total_hours') rowData.push(isSpecialStatus ? '---' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
         if (key === 'hourly_rate') rowData.push(`$${record.hourly_rate || '0.00'}`);
         if (key === 'earnings') {
-          rowData.push(`$${recordEarnings.toFixed(2)}`);
+          rowData.push(isSpecialStatus ? '' : `$${recordEarnings.toFixed(2)}`);
         }
       });
       tableRows.push(rowData);
@@ -749,8 +757,9 @@ const DtrPage = () => {
         </div>
 
         {displayUser ? (
-          <div className="dtr-content-layout">
-            <div className="dtr-sidebar">
+          <>
+            <div className="dtr-content-layout">
+              <div className="dtr-sidebar">
               <div className="daily-attendance-summary">
                 <div className="summary-row">
                   <span className="summary-label">Work:</span>
@@ -797,7 +806,7 @@ const DtrPage = () => {
                   <div className="employee-card-profile">
                     <div className="employee-info-main">
                       <h2 className="employee-name">{displayUser.full_name || 'N/A'}</h2>
-                      <span className="employee-role">{displayUser.position || displayUser.role || 'N/A'}</span>
+                      <span className="employee-role">{displayUser.email || 'N/A'}</span>
                     </div>
                   </div>
                   <div className="employee-id-badge">
@@ -830,7 +839,7 @@ const DtrPage = () => {
                   </div>
                   <div className="employee-stat-group">
                     <span className="stat-label">Position</span>
-                    <span className="stat-value">{displayUser.position || displayUser.role || 'N/A'}</span>
+                    <span className="stat-value" style={{ textTransform: 'capitalize' }}>{displayUser.position || displayUser.role || 'N/A'}</span>
                   </div>
                   <div className="employee-stat-group">
                     <span className="stat-label">Employment Status</span>
@@ -842,9 +851,11 @@ const DtrPage = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="dtr-table-section">
-                <div className="dtr-table-title">ATTENDANCE RECORD</div>
+          <div className="dtr-table-section" style={{ marginTop: '24px' }}>
+            <div className="dtr-table-title">ATTENDANCE RECORD</div>
                 <div className="table-responsive">
                   <table className="dtr-monthly-table">
                     <thead>
@@ -855,6 +866,7 @@ const DtrPage = () => {
                         <th rowSpan={2} style={{ width: '100px' }}>TOTAL HRS</th>
                         {isAdmin && <th rowSpan={2} style={{ width: '100px' }}>RATE/HR</th>}
                         {isAdmin && <th rowSpan={2} style={{ width: '120px' }}>EARNINGS</th>}
+                        <th rowSpan={2} style={{ width: '120px' }}>STATUS</th>
                       </tr>
                       <tr>
                         <th style={{ minWidth: '100px', width: '120px' }}>IN</th>
@@ -878,20 +890,26 @@ const DtrPage = () => {
                               grandTotalHrs += hrs;
                               grandTotalEarnings += earnings;
 
+                              const isSpecialStatus = row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status);
+                              const displayStatus = row && row.status ? row.status.toUpperCase() : '';
+
                               return (
                                 <tr key={dayObj.dateStr}>
                                   <td className="dtr-day-col">{dayObj.dayNum}</td>
-                                  <td style={{ color: row && row.status === 'Absent' ? 'var(--danger)' : 'inherit', fontWeight: row && row.status === 'Absent' ? 700 : 400 }}>
-                                    {row && row.status === 'Absent' ? 'ABSENT' : (row && row.am_in ? formatTime(row.am_in, row.date) : '')}
+                                  <td style={{ color: 'inherit', fontWeight: 400 }}>
+                                    {isSpecialStatus ? '---' : (row && row.am_in ? formatTime(row.am_in, row.date) : '')}
                                   </td>
-                                  <td style={{ color: row && row.status === 'Absent' ? 'var(--danger)' : 'inherit', fontWeight: row && row.status === 'Absent' ? 700 : 400 }}>
-                                    {row && row.status === 'Absent' ? 'ABSENT' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '')}
+                                  <td style={{ color: 'inherit', fontWeight: 400 }}>
+                                    {isSpecialStatus ? '---' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '')}
                                   </td>
-                                  <td style={{ fontWeight: 600, color: row && row.status === 'Absent' ? 'var(--danger)' : 'var(--primary)' }}>
-                                    {row && row.status === 'Absent' ? 'ABSENT' : (hrs ? formatHoursDuration(hrs) : '')}
+                                  <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                                    {isSpecialStatus ? '---' : (hrs ? formatHoursDuration(hrs) : '')}
                                   </td>
                                   {isAdmin && <td>{rate ? `$${rate.toFixed(2)}` : ''}</td>}
-                                  {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings ? `$${earnings.toFixed(2)}` : ''}</td>}
+                                  {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings && !isSpecialStatus ? `$${earnings.toFixed(2)}` : ''}</td>}
+                                  <td style={{ fontWeight: 600, color: row?.status === 'Absent' ? 'var(--danger)' : (isSpecialStatus ? 'var(--primary)' : 'inherit') }}>
+                                    {displayStatus}
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -900,6 +918,7 @@ const DtrPage = () => {
                               <td style={{ color: 'var(--primary)', fontWeight: 800 }}>{grandTotalHrs > 0 ? formatHoursDuration(grandTotalHrs) : ''}</td>
                               {isAdmin && <td></td>}
                               {isAdmin && <td style={{ color: 'var(--success)', fontWeight: 800 }}>{grandTotalEarnings > 0 ? `$${grandTotalEarnings.toFixed(2)}` : ''}</td>}
+                              <td></td>
                             </tr>
                           </>
                         );
@@ -908,9 +927,8 @@ const DtrPage = () => {
                   </table>
                 </div>
               </div>
-            </div>
-          </div>
-        ) : (
+            </>
+          ) : (
           <div className="dtr-table-section">
             <div className="dtr-table-title">ALL EMPLOYEES SUMMARY</div>
             <div className="table-responsive">
