@@ -60,6 +60,7 @@ const DtrPage = () => {
   const user = JSON.parse(localStorage.getItem('user'));
   const isAdmin = user?.role === 'admin';
   const [employees, setEmployees] = useState([]);
+  const [events, setEvents] = useState([]);
   const { addNotification } = useNotification();
 
   // Helper: get US date as YYYY-MM-DD to match the server time
@@ -174,8 +175,20 @@ const DtrPage = () => {
 
   useEffect(() => {
     fetchRecords();
+    fetchEvents();
     if (isAdmin) fetchEmployees();
   }, []);
+
+  const fetchEvents = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/calendar.php?role=${user.role}&user_id=${user.id}`);
+      if (res.data.status === 'success') {
+        setEvents(res.data.data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -883,6 +896,26 @@ const DtrPage = () => {
                             {filteredDays.map(dayObj => {
                               const dailyRecords = tableRecords.filter(r => r.date === dayObj.dateStr);
                               const row = dailyRecords[0];
+                              const targetUserId = displayUser.id;
+                              
+                              let virtualStatus = '';
+                              if (!row) {
+                                const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && e.user_id == targetUserId);
+                                const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
+                                const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
+                                const approved = dailyEvents.find(e => e.status === 'approved');
+
+                                if (pendingReschedule) {
+                                  virtualStatus = 'PENDING RESCHEDULE';
+                                } else if (pendingNew) {
+                                  virtualStatus = `PENDING ${pendingNew.event_type}`;
+                                } else if (approved) {
+                                  if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
+                                  else if (approved.event_type === 'HL') virtualStatus = 'HOLIDAY';
+                                  else virtualStatus = 'SCHEDULED';
+                                }
+                              }
+
                               const hrs = row ? parseFloat(row.total_hours) || 0 : 0;
                               const rate = row ? (parseFloat(row.hourly_rate) || parseFloat(displayUser.hourly_rate) || 0) : 0;
                               const earnings = hrs * rate;
@@ -891,7 +924,12 @@ const DtrPage = () => {
                               grandTotalEarnings += earnings;
 
                               const isSpecialStatus = row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status);
-                              const displayStatus = row && row.status ? row.status.toUpperCase() : '';
+                              const displayStatus = row && row.status ? row.status.toUpperCase() : virtualStatus;
+                              
+                              let statusColor = 'inherit';
+                              if (row?.status === 'Absent') statusColor = 'var(--danger)';
+                              else if (isSpecialStatus) statusColor = 'var(--primary)';
+                              else if (virtualStatus) statusColor = 'var(--text-muted)';
 
                               return (
                                 <tr key={dayObj.dateStr}>
@@ -907,7 +945,7 @@ const DtrPage = () => {
                                   </td>
                                   {isAdmin && <td>{rate ? `$${rate.toFixed(2)}` : ''}</td>}
                                   {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings && !isSpecialStatus ? `$${earnings.toFixed(2)}` : ''}</td>}
-                                  <td style={{ fontWeight: 600, color: row?.status === 'Absent' ? 'var(--danger)' : (isSpecialStatus ? 'var(--primary)' : 'inherit') }}>
+                                  <td style={{ fontWeight: 600, color: statusColor }}>
                                     {displayStatus}
                                   </td>
                                 </tr>

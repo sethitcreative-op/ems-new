@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import FloatingEmail from '../FloatingEmail';
 
 const DashboardLayout = () => {
   return (
@@ -11,6 +12,7 @@ const DashboardLayout = () => {
         <Header />
         <Outlet />
       </div>
+      <FloatingEmail />
     </div>
   );
 };
