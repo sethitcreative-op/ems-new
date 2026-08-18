@@ -7,6 +7,52 @@ import { useNotification } from '../../context/NotificationContext';
 import './DtrPage.css';
 import API_BASE from '../../config/api';
 
+const ActiveTimer = ({ activeShift }) => {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (activeShift && activeShift.am_in) {
+      const calculateElapsed = () => {
+        const now = new Date();
+        const amInStr = activeShift.am_in;
+        const recordDate = activeShift.date;
+        let amInDate;
+
+        if (amInStr.includes(' ')) {
+          amInDate = new Date(amInStr.replace(/-/g, '/'));
+        } else {
+          amInDate = new Date(`${recordDate} ${amInStr}`.replace(/-/g, '/'));
+        }
+
+        const diffInSeconds = Math.floor((now - amInDate) / 1000);
+        return diffInSeconds > 0 ? diffInSeconds : 0;
+      };
+
+      setElapsedSeconds(calculateElapsed());
+      interval = setInterval(() => {
+        setElapsedSeconds(calculateElapsed());
+      }, 1000);
+    } else {
+      setElapsedSeconds(0);
+    }
+    return () => clearInterval(interval);
+  }, [activeShift]);
+
+  const formatElapsedTime = (totalSeconds) => {
+    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+    const seconds = String(totalSeconds % 60).padStart(2, '0');
+    return `${hours}:${minutes}:${seconds}`;
+  };
+
+  return (
+    <span style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '1.2rem', color: 'var(--primary)' }}>
+      {formatElapsedTime(elapsedSeconds)}
+    </span>
+  );
+};
+
 const DtrPage = () => {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -14,7 +60,6 @@ const DtrPage = () => {
   const isAdmin = user?.role === 'admin';
   const [employees, setEmployees] = useState([]);
   const { addNotification } = useNotification();
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Helper: get local date as YYYY-MM-DD (avoids UTC date shift from toISOString)
   const getLocalDateStr = (date = new Date()) => {
@@ -293,42 +338,6 @@ const DtrPage = () => {
 
   const isAmInDisabled = loading || !!myActiveShift || !!myTodayRecord;
   const isPmOutDisabled = loading || !myActiveShift;
-
-  useEffect(() => {
-    let interval;
-    if (displayActiveShift && displayActiveShift.am_in) {
-      const calculateElapsed = () => {
-        const now = new Date();
-        const amInStr = displayActiveShift.am_in;
-        const recordDate = displayActiveShift.date;
-        let amInDate;
-
-        if (amInStr.includes(' ')) {
-          amInDate = new Date(amInStr.replace(/-/g, '/'));
-        } else {
-          amInDate = new Date(`${recordDate} ${amInStr}`.replace(/-/g, '/'));
-        }
-
-        const diffInSeconds = Math.floor((now - amInDate) / 1000);
-        return diffInSeconds > 0 ? diffInSeconds : 0;
-      };
-
-      setElapsedSeconds(calculateElapsed());
-      interval = setInterval(() => {
-        setElapsedSeconds(calculateElapsed());
-      }, 1000);
-    } else {
-      setElapsedSeconds(0);
-    }
-    return () => clearInterval(interval);
-  }, [displayActiveShift]);
-
-  const formatElapsedTime = (totalSeconds) => {
-    const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
-    const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
-    const seconds = String(totalSeconds % 60).padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
-  };
 
   // --- ADMIN EXPORT LOGIC ---
   const exportWeeksArray = [];
@@ -707,9 +716,7 @@ const DtrPage = () => {
                   <span className="summary-label">Work:</span>
                   <span className="summary-text">
                     {displayActiveShift ? (
-                      <span style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: '1.2rem', color: 'var(--primary)' }}>
-                        {formatElapsedTime(elapsedSeconds)}
-                      </span>
+                      <ActiveTimer activeShift={displayActiveShift} />
                     ) : displayTodayRecord?.pm_out ? (
                       <span style={{ fontWeight: 600, color: 'var(--success)' }}>
                         Shift Ended ({displayTodayRecord.total_hours ? formatHoursDuration(displayTodayRecord.total_hours) : ''})
