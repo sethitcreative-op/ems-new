@@ -115,7 +115,15 @@ const DtrPage = () => {
 
   const [showExportCenter, setShowExportCenter] = useState(false);
   const [exportMonth, setExportMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [exportWeek, setExportWeek] = useState(0);
+  const [exportWeekStr, setExportWeekStr] = useState(() => {
+    const today = new Date();
+    const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+  });
 
   // Dynamic Date Filter State
   const [dtrFilterType, setDtrFilterType] = useState('week'); // 'month', 'week', 'day'
@@ -340,34 +348,29 @@ const DtrPage = () => {
   const isPmOutDisabled = loading || !myActiveShift;
 
   // --- ADMIN EXPORT LOGIC ---
-  const exportWeeksArray = [];
-  if (exportMonth) {
-    const [year, month] = exportMonth.split('-').map(Number);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    let currentWeek = [];
-    for (let day = 1; day <= daysInMonth; day++) {
-      const dateObj = new Date(year, month - 1, day);
-      const dayOfWeek = dateObj.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        currentWeek.push(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
-      }
-      if (dayOfWeek === 5 || day === daysInMonth) {
-        if (currentWeek.length > 0) exportWeeksArray.push(currentWeek);
-        currentWeek = [];
-      }
-    }
-  }
-
   const handlePresetExport = (type) => {
     const today = new Date();
     let start = '';
     let end = getLocalDateStr(today);
 
     if (type === 'weekly') {
-      const targetWeek = exportWeeksArray[exportWeek] || [];
-      if (targetWeek.length > 0) {
-        start = targetWeek[0];
-        end = targetWeek[targetWeek.length - 1];
+      const [yearStr, weekNumStr] = exportWeekStr.split('-W');
+      if (yearStr && weekNumStr) {
+        const year = parseInt(yearStr, 10);
+        const week = parseInt(weekNumStr, 10);
+        const simple = new Date(year, 0, 1 + (week - 1) * 7);
+        const dow = simple.getDay();
+        const ISOweekStart = new Date(simple);
+        if (dow <= 4) {
+          ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+        } else {
+          ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+        }
+        
+        start = getLocalDateStr(ISOweekStart);
+        const ISOweekEnd = new Date(ISOweekStart);
+        ISOweekEnd.setDate(ISOweekStart.getDate() + 6);
+        end = getLocalDateStr(ISOweekEnd);
       }
     } else if (type === 'monthly') {
       const [year, month] = exportMonth.split('-').map(Number);
@@ -412,7 +415,7 @@ const DtrPage = () => {
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 41, 59);
     // Center for landscape A4 is 148.5 (width is 297)
-    doc.text("DAILY TIME RECORD", 148.5, 20, { align: "center" });
+    doc.text("SUMMARY REPORT", 148.5, 20, { align: "center" });
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "normal");
@@ -434,6 +437,11 @@ const DtrPage = () => {
       doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 46);
     }
 
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("Summary Table", 14, selectedExportUser !== 'all' ? 66 : 56);
+
     const tableColumn = ["DATE"];
     const dataKeys = ["date"];
 
@@ -444,33 +452,59 @@ const DtrPage = () => {
     if (pdfColumns.rate) { tableColumn.push("RATE"); dataKeys.push("hourly_rate"); }
     if (pdfColumns.earnings) { tableColumn.push("EARNINGS"); dataKeys.push("earnings"); }
 
+    let grandTotalHrs = 0;
+    let grandTotalEarnings = 0;
+
     const tableRows = [];
     currentRecords.forEach(record => {
       const rowData = [];
+      const recordHrs = parseFloat(record.total_hours || 0);
+      const recordRate = parseFloat(record.hourly_rate || parseFloat(employees.find(e => e.id == record.user_id)?.hourly_rate) || 0);
+      const recordEarnings = recordHrs * recordRate;
+
+      if (record.status !== 'Absent') {
+        grandTotalHrs += recordHrs;
+        grandTotalEarnings += recordEarnings;
+      }
+
       dataKeys.forEach(key => {
         if (key === 'date') rowData.push(record.date);
         if (key === 'full_name') rowData.push(record.full_name || user.full_name);
-        if (key === 'am_in') rowData.push(record.am_in ? formatTime(record.am_in, record.date) : '--:--');
-        if (key === 'pm_out') rowData.push(record.pm_out ? formatTime(record.pm_out, record.date) : '--:--');
-        if (key === 'total_hours') rowData.push(record.total_hours ? formatHoursDuration(record.total_hours) : '0h');
+        if (key === 'am_in') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
+        if (key === 'pm_out') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
+        if (key === 'total_hours') rowData.push(record.status === 'Absent' ? 'ABSENT' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
         if (key === 'hourly_rate') rowData.push(`$${record.hourly_rate || '0.00'}`);
         if (key === 'earnings') {
-          const calculatedEarnings = parseFloat(record.total_hours || 0) * parseFloat(record.hourly_rate || 0);
-          rowData.push(`$${calculatedEarnings.toFixed(2)}`);
+          rowData.push(`$${recordEarnings.toFixed(2)}`);
         }
       });
       tableRows.push(rowData);
     });
 
+    const grandTotalRow = [];
+    dataKeys.forEach((key, index) => {
+      if (index === 0) grandTotalRow.push("GRAND TOTAL");
+      else if (key === 'total_hours') grandTotalRow.push(formatHoursDuration(grandTotalHrs));
+      else if (key === 'earnings') grandTotalRow.push(`$${grandTotalEarnings.toFixed(2)}`);
+      else grandTotalRow.push("");
+    });
+    tableRows.push(grandTotalRow);
+
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: selectedExportUser !== 'all' ? 65 : 55,
+      startY: selectedExportUser !== 'all' ? 70 : 60,
       theme: 'grid',
       headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
       bodyStyles: { textColor: [51, 65, 85], halign: 'center' },
       alternateRowStyles: { fillColor: [248, 250, 252] },
-      styles: { font: 'helvetica', fontSize: 9, cellPadding: 6 }
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 6 },
+      didParseCell: function(data) {
+        if (data.row.raw[0] === 'GRAND TOTAL') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [241, 245, 249];
+        }
+      }
     });
 
     doc.save(`DTR_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -527,14 +561,23 @@ const DtrPage = () => {
 
                 {/* Monthly Export Row */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '200px' }}>
+                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
                     <label>Select Month</label>
                     <input
                       type="month"
                       className="premium-input"
                       value={exportMonth}
-                      onChange={e => { setExportMonth(e.target.value); setExportWeek(0); }}
+                      onChange={e => setExportMonth(e.target.value)}
                     />
+                  </div>
+                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                    <label>Employee</label>
+                    <select className="premium-input" value={selectedExportUser} onChange={e => setSelectedExportUser(e.target.value)}>
+                      <option value="all">All Employees</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
                   </div>
                   <button className="btn btn-primary" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('monthly')}>
                     <Download size={16} /> Monthly PDF Export
@@ -543,24 +586,21 @@ const DtrPage = () => {
 
                 {/* Weekly Export Row */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '200px' }}>
-                    <label>Target Month</label>
+                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                    <label>Select Week</label>
                     <input
-                      type="month"
+                      type="week"
                       className="premium-input"
-                      value={exportMonth}
-                      onChange={e => { setExportMonth(e.target.value); setExportWeek(0); }}
+                      value={exportWeekStr}
+                      onChange={e => setExportWeekStr(e.target.value)}
                     />
                   </div>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '200px' }}>
-                    <label>Select Week</label>
-                    <select
-                      className="premium-input"
-                      value={exportWeek}
-                      onChange={e => setExportWeek(Number(e.target.value))}
-                    >
-                      {exportWeeksArray.map((_, idx) => (
-                        <option key={idx} value={idx}>Week {idx + 1}</option>
+                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                    <label>Employee</label>
+                    <select className="premium-input" value={selectedExportUser} onChange={e => setSelectedExportUser(e.target.value)}>
+                      <option value="all">All Employees</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
                       ))}
                     </select>
                   </div>
@@ -744,8 +784,8 @@ const DtrPage = () => {
                 </div>
                 <div className="summary-row">
                   <span className="summary-label">Status:</span>
-                  <span className={`summary-value ${displayTodayRecord ? 'status-present' : 'status-absent'}`}>
-                    {displayTodayRecord ? 'present' : 'absent'}
+                  <span className={`summary-value ${(displayTodayRecord && displayTodayRecord.status !== 'Absent') ? 'status-present' : 'status-absent'}`}>
+                    {(displayTodayRecord && displayTodayRecord.status !== 'Absent') ? 'present' : 'absent'}
                   </span>
                 </div>
               </div>
@@ -768,6 +808,22 @@ const DtrPage = () => {
                 <div className="employee-card-divider"></div>
 
                 <div className="employee-card-body">
+                  <div className="employee-stat-group">
+                    <span className="stat-label">Month</span>
+                    <span className="stat-value">{new Date().toLocaleString('en-US', { month: 'short' })}</span>
+                  </div>
+                  <div className="employee-stat-group">
+                    <span className="stat-label">Day</span>
+                    <span className="stat-value">{new Date().toLocaleString('en-US', { day: 'numeric' })}</span>
+                  </div>
+                  <div className="employee-stat-group">
+                    <span className="stat-label">Year</span>
+                    <span className="stat-value">{new Date().toLocaleString('en-US', { year: 'numeric' })}</span>
+                  </div>
+                  <div className="employee-stat-group">
+                    <span className="stat-label">Sex</span>
+                    <span className="stat-value">{displayUser.sex || 'N/A'}</span>
+                  </div>
                   <div className="employee-stat-group">
                     <span className="stat-label">Department</span>
                     <span className="stat-value">{displayUser.department || 'N/A'}</span>
@@ -794,15 +850,15 @@ const DtrPage = () => {
                     <thead>
                       <tr>
                         <th rowSpan={2} style={{ width: '60px' }}>DAY</th>
-                        <th>AM</th>
-                        <th>PM</th>
+                        <th style={{ minWidth: '100px', width: '120px' }}>AM</th>
+                        <th style={{ minWidth: '100px', width: '120px' }}>PM</th>
                         <th rowSpan={2} style={{ width: '100px' }}>TOTAL HRS</th>
                         {isAdmin && <th rowSpan={2} style={{ width: '100px' }}>RATE/HR</th>}
                         {isAdmin && <th rowSpan={2} style={{ width: '120px' }}>EARNINGS</th>}
                       </tr>
                       <tr>
-                        <th>IN</th>
-                        <th>OUT</th>
+                        <th style={{ minWidth: '100px', width: '120px' }}>IN</th>
+                        <th style={{ minWidth: '100px', width: '120px' }}>OUT</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -825,9 +881,15 @@ const DtrPage = () => {
                               return (
                                 <tr key={dayObj.dateStr}>
                                   <td className="dtr-day-col">{dayObj.dayNum}</td>
-                                  <td>{row && row.am_in ? formatTime(row.am_in, row.date) : ''}</td>
-                                  <td>{row && row.pm_out ? formatTime(row.pm_out, row.date) : ''}</td>
-                                  <td style={{ fontWeight: 600, color: 'var(--primary)' }}>{hrs ? formatHoursDuration(hrs) : ''}</td>
+                                  <td style={{ color: row && row.status === 'Absent' ? 'var(--danger)' : 'inherit', fontWeight: row && row.status === 'Absent' ? 700 : 400 }}>
+                                    {row && row.status === 'Absent' ? 'ABSENT' : (row && row.am_in ? formatTime(row.am_in, row.date) : '')}
+                                  </td>
+                                  <td style={{ color: row && row.status === 'Absent' ? 'var(--danger)' : 'inherit', fontWeight: row && row.status === 'Absent' ? 700 : 400 }}>
+                                    {row && row.status === 'Absent' ? 'ABSENT' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '')}
+                                  </td>
+                                  <td style={{ fontWeight: 600, color: row && row.status === 'Absent' ? 'var(--danger)' : 'var(--primary)' }}>
+                                    {row && row.status === 'Absent' ? 'ABSENT' : (hrs ? formatHoursDuration(hrs) : '')}
+                                  </td>
                                   {isAdmin && <td>{rate ? `$${rate.toFixed(2)}` : ''}</td>}
                                   {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings ? `$${earnings.toFixed(2)}` : ''}</td>}
                                 </tr>

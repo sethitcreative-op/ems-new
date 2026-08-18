@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('America/New_York');
 require_once '../config/cors.php';
 require_once '../config/database.php';
 require_once '../config/logger.php';
@@ -14,8 +15,8 @@ if ($action === 'clock_in') {
     $server_date = date('Y-m-d');
     $server_datetime = $server_date . ' ' . $server_time;
     
-    $query = "INSERT INTO attendance (user_id, date, am_in) VALUES (:user_id, :server_date, :server_datetime) 
-              ON DUPLICATE KEY UPDATE am_in = IF(am_in IS NULL, VALUES(am_in), am_in)";
+    $query = "INSERT INTO attendance (user_id, date, am_in, status) VALUES (:user_id, :server_date, :server_datetime, 'Present') 
+              ON DUPLICATE KEY UPDATE am_in = IF(am_in IS NULL, VALUES(am_in), am_in), status = 'Present'";
     $stmt = $conn->prepare($query);
     $stmt->execute([':user_id' => $user_id, ':server_date' => $server_date, ':server_datetime' => $server_datetime]);
     logAction($conn, $user_id, 'DTR_CLOCK_IN', "Clocked in at {$server_datetime}");

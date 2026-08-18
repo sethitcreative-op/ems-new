@@ -26,7 +26,7 @@ function uploadProfilePicture($file) {
 }
 
 if ($method === 'GET' && $action === 'list') {
-    $query = "SELECT id, username, role, full_name, hourly_rate, profile_picture, email, phone, address, id_number, created_at FROM users";
+    $query = "SELECT id, username, role, full_name, hourly_rate, profile_picture, email, phone, address, id_number, sex, created_at FROM users";
     $stmt = $conn->prepare($query);
     $stmt->execute();
     $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -51,6 +51,7 @@ elseif ($method === 'POST') {
     $phone = $_POST['phone'] ?? ($data->phone ?? null);
     $address = $_POST['address'] ?? ($data->address ?? null);
     $id_number = $_POST['id_number'] ?? ($data->id_number ?? null);
+    $sex = $_POST['sex'] ?? ($data->sex ?? null);
     
     $profile_picture = null;
     if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
@@ -59,8 +60,8 @@ elseif ($method === 'POST') {
 
     if ($isUpdate) {
         // Update existing employee
-        $query = "UPDATE users SET username=:username, role=:role, full_name=:name, hourly_rate=:rate, email=:email, phone=:phone, address=:address, id_number=:id_number";
-        $params = [':username'=>$username, ':role'=>$role, ':name'=>$full_name, ':rate'=>$hourly_rate, ':email'=>$email, ':phone'=>$phone, ':address'=>$address, ':id_number'=>$id_number, ':id'=>$id];
+        $query = "UPDATE users SET username=:username, role=:role, full_name=:name, hourly_rate=:rate, email=:email, phone=:phone, address=:address, id_number=:id_number, sex=:sex";
+        $params = [':username'=>$username, ':role'=>$role, ':name'=>$full_name, ':rate'=>$hourly_rate, ':email'=>$email, ':phone'=>$phone, ':address'=>$address, ':id_number'=>$id_number, ':sex'=>$sex, ':id'=>$id];
         
         if (!empty($password)) {
             $password_hash = password_hash($password, PASSWORD_BCRYPT);
@@ -85,10 +86,10 @@ elseif ($method === 'POST') {
         // Create new employee
         $password_hash = password_hash($password, PASSWORD_BCRYPT);
         
-        $query = "INSERT INTO users (username, password_hash, role, full_name, hourly_rate, profile_picture, email, phone, address, id_number) VALUES (:username, :pass, :role, :name, :rate, :pic, :email, :phone, :address, :id_number)";
+        $query = "INSERT INTO users (username, password_hash, role, full_name, hourly_rate, profile_picture, email, phone, address, id_number, sex) VALUES (:username, :pass, :role, :name, :rate, :pic, :email, :phone, :address, :id_number, :sex)";
         $stmt = $conn->prepare($query);
         try {
-            $stmt->execute([':username'=>$username, ':pass'=>$password_hash, ':role'=>$role, ':name'=>$full_name, ':rate'=>$hourly_rate, ':pic'=>$profile_picture, ':email'=>$email, ':phone'=>$phone, ':address'=>$address, ':id_number'=>$id_number]);
+            $stmt->execute([':username'=>$username, ':pass'=>$password_hash, ':role'=>$role, ':name'=>$full_name, ':rate'=>$hourly_rate, ':pic'=>$profile_picture, ':email'=>$email, ':phone'=>$phone, ':address'=>$address, ':id_number'=>$id_number, ':sex'=>$sex]);
             $new_id = $conn->lastInsertId();
             logAction($conn, $new_id, 'CREATE_EMPLOYEE', "Employee {$username} created.");
             echo json_encode(["status" => "success", "message" => "Employee created successfully", "profile_picture" => $profile_picture]);

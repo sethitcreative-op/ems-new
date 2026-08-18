@@ -41,9 +41,9 @@ const SystemLogsPage = () => {
 
   const filteredLogs = logs.filter(log => {
     const matchesSearch = 
-      log.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      log.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action?.toLowerCase().includes(searchTerm.toLowerCase());
+      (log.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+      (log.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (log.action || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesAction = actionFilter === 'ALL' || log.action === actionFilter;
     

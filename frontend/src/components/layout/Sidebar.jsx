@@ -8,6 +8,7 @@ const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
@@ -18,8 +19,10 @@ const Sidebar = () => {
     return () => window.removeEventListener('userUpdated', handleUserUpdate);
   }, []);
 
-  const [hasNewCalendarData, setHasNewCalendarData] = useState(false);
-  const [calendarItemsCount, setCalendarItemsCount] = useState(0);
+  const [hasNewApproval, setHasNewApproval] = useState(false);
+  const [approvalCount, setApprovalCount] = useState(0);
+  const [hasNewTracker, setHasNewTracker] = useState(false);
+  const [trackerCount, setTrackerCount] = useState(0);
 
   useEffect(() => {
     if (isAdmin) {
@@ -28,11 +31,31 @@ const Sidebar = () => {
           const res = await fetch(`${API_BASE}/calendar.php?role=admin&user_id=${user.id}`);
           const data = await res.json();
           if (data.status === 'success') {
-            const totalEvents = data.data.length;
-            setCalendarItemsCount(totalEvents);
-            const lastSeenCount = localStorage.getItem('calendarTotalCount');
-            if (totalEvents > 0 && lastSeenCount !== totalEvents.toString()) {
-              setHasNewCalendarData(true);
+            const events = data.data;
+            
+            // Check for new pending approvals
+            const pendingEvents = events.filter(e => e.status === 'pending');
+            const pCount = pendingEvents.length;
+            setApprovalCount(pCount);
+            const lastSeenApproval = localStorage.getItem('calendarApprovalCount');
+            // Show NEW if there are pending items and the count is different from last seen (specifically, if it increased or if they haven't seen it)
+            if (pCount > 0 && lastSeenApproval !== pCount.toString()) {
+                if (!lastSeenApproval || pCount > parseInt(lastSeenApproval)) {
+                    setHasNewApproval(true);
+                }
+            } else if (pCount === 0) {
+                setHasNewApproval(false);
+            }
+
+            // Check for new tracker items (approved or pending)
+            const trackerEvents = events.filter(e => e.status !== 'rejected');
+            const tCount = trackerEvents.length;
+            setTrackerCount(tCount);
+            const lastSeenTracker = localStorage.getItem('calendarTrackerCount');
+            if (tCount > 0 && lastSeenTracker !== tCount.toString()) {
+                if (!lastSeenTracker || tCount > parseInt(lastSeenTracker)) {
+                    setHasNewTracker(true);
+                }
             }
           }
         } catch (err) {
@@ -46,6 +69,8 @@ const Sidebar = () => {
     }
   }, [isAdmin, user?.id]);
 
+  const hasNewCalendarData = hasNewApproval || hasNewTracker;
+
   const [isCalendarDropdownOpen, setIsCalendarDropdownOpen] = useState(
     location.pathname.includes('/calendar')
   );
@@ -57,18 +82,29 @@ const Sidebar = () => {
   }, [location.pathname]);
 
   const handleLogout = () => {
+    setIsLoggingOut(true);
     document.body.classList.add('fade-out-exit');
     setTimeout(() => {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       document.body.classList.remove('fade-out-exit');
       navigate('/login');
-    }, 400);
+    }, 2000);
   };
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-profile-section">
+    <>
+      {isLoggingOut && (
+        <div className="fullscreen-loader">
+          <div className="loader-logo-container">
+            <img src="/img/logo.jpg" alt="WorkTrack Logo" className="loader-logo" />
+            <div className="loader-spinner"></div>
+          </div>
+          <div className="loader-text">Logging out...</div>
+        </div>
+      )}
+      <div className="sidebar">
+        <div className="sidebar-profile-section">
         <div className="avatar-wrapper">
           {user?.profile_picture ? (
             <img src={user.profile_picture.startsWith('http') || user.profile_picture.startsWith('data:image') ? user.profile_picture : (user.profile_picture.startsWith('img/') ? `/${user.profile_picture}` : `${API_BASE.replace('/api', '')}/${user.profile_picture}`)} alt="Profile" />
@@ -93,10 +129,7 @@ const Sidebar = () => {
             end
             onClick={(e) => {
               setIsCalendarDropdownOpen(true);
-              if (hasNewCalendarData) {
-                setHasNewCalendarData(false);
-                localStorage.setItem('calendarTotalCount', calendarItemsCount.toString());
-              }
+              // Do not clear the badges here, let the user click the specific sub-menus to clear them
             }}
           >
             <span style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -108,10 +141,6 @@ const Sidebar = () => {
                 e.preventDefault();
                 e.stopPropagation();
                 setIsCalendarDropdownOpen(!isCalendarDropdownOpen);
-                if (hasNewCalendarData) {
-                  setHasNewCalendarData(false);
-                  localStorage.setItem('calendarTotalCount', calendarItemsCount.toString());
-                }
               }}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2px' }}
             >
@@ -137,13 +166,33 @@ const Sidebar = () => {
           >
             {isAdmin ? (
               <>
-                <NavLink to="/calendar/requests" className={({ isActive }) => `nav-item sub-item ${isActive ? 'active' : ''}`}>
+                <NavLink 
+                  to="/calendar/requests" 
+                  className={({ isActive }) => `nav-item sub-item ${isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    if (hasNewApproval) {
+                      setHasNewApproval(false);
+                      localStorage.setItem('calendarApprovalCount', approvalCount.toString());
+                    }
+                  }}
+                >
                   <ClipboardCheck size={16} style={{ marginRight: '8px' }} />
-                  <span>Approval Requests</span>
+                  <span style={{ flex: 1 }}>Approval Requests</span>
+                  {hasNewApproval && <span className="badge-new" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>NEW</span>}
                 </NavLink>
-                <NavLink to="/calendar/tracker" className={({ isActive }) => `nav-item sub-item ${isActive ? 'active' : ''}`}>
+                <NavLink 
+                  to="/calendar/tracker" 
+                  className={({ isActive }) => `nav-item sub-item ${isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    if (hasNewTracker) {
+                      setHasNewTracker(false);
+                      localStorage.setItem('calendarTrackerCount', trackerCount.toString());
+                    }
+                  }}
+                >
                   <FileText size={16} style={{ marginRight: '8px' }} />
-                  <span>Change Schedule Tracker</span>
+                  <span style={{ flex: 1 }}>Change Schedule Tracker</span>
+                  {hasNewTracker && <span className="badge-new" style={{ fontSize: '0.6rem', padding: '2px 6px' }}>NEW</span>}
                 </NavLink>
               </>
             ) : (
@@ -180,6 +229,7 @@ const Sidebar = () => {
         </button>
       </nav>
     </div>
+    </>
   );
 };
 

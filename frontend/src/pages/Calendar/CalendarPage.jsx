@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Edit2, Trash2, RefreshCw } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
@@ -10,6 +10,7 @@ const EVENT_TYPES = ['WS', 'VL', 'HL'];
 
 const CalendarPage = () => {
   const [events, setEvents] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -43,9 +44,30 @@ const CalendarPage = () => {
   const [eventType, setEventType] = useState('VL');
   const { addNotification } = useNotification();
 
+  // Holidays Management State (Admin)
+  const [holidayTableYear, setHolidayTableYear] = useState(new Date().getFullYear());
+  const [showAddHolidayModal, setShowAddHolidayModal] = useState(false);
+  const [newHolidayName, setNewHolidayName] = useState('');
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [editingHolidayId, setEditingHolidayId] = useState(null);
+  const [editHolidayName, setEditHolidayName] = useState('');
+  const [editHolidayDate, setEditHolidayDate] = useState('');
+  const seededYearsRef = useRef(new Set());
+
   useEffect(() => {
     fetchEvents();
   }, []);
+
+  // Fetch holidays when calendar year changes (auto-seed if needed)
+  useEffect(() => {
+    const year = currentDate.getFullYear();
+    autoSeedAndFetchHolidays(year);
+  }, [currentDate]);
+
+  // Fetch holidays when the admin table year filter changes
+  useEffect(() => {
+    fetchHolidaysForYear(holidayTableYear);
+  }, [holidayTableYear]);
 
   useEffect(() => {
     if (location.state?.openRescheduleModal && location.state?.requestData) {
@@ -56,6 +78,117 @@ const CalendarPage = () => {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location, navigate]);
+
+  // ---- Holidays API Functions ----
+
+  const autoSeedAndFetchHolidays = async (year) => {
+    // Don't re-seed the same year within this session
+    if (seededYearsRef.current.has(year)) {
+      return;
+    }
+    try {
+      // Check if holidays exist for this year
+      const checkRes = await axios.get(`${API_BASE}/holidays.php?check_year=${year}`);
+      if (checkRes.data.status === 'success' && checkRes.data.count === 0) {
+        // Auto-seed
+        await axios.post(`${API_BASE}/holidays.php`, { action: 'seed', year });
+      }
+      seededYearsRef.current.add(year);
+      // Now fetch all holidays (we fetch all to cover cross-month views)
+      await fetchHolidaysForYear(year);
+    } catch (err) {
+      console.error('Failed to auto-seed/fetch holidays:', err);
+    }
+  };
+
+  const fetchHolidaysForYear = async (year) => {
+    try {
+      const res = await axios.get(`${API_BASE}/holidays.php?year=${year}`);
+      if (res.data.status === 'success') {
+        setHolidays(prev => {
+          // Merge: keep holidays from other years, replace this year's
+          const otherYears = prev.filter(h => {
+            const hYear = parseInt(h.holiday_date.split('-')[0], 10);
+            return hYear !== year;
+          });
+          return [...otherYears, ...res.data.data];
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch holidays:', err);
+    }
+  };
+
+  const handleSeedYear = async (year) => {
+    try {
+      const res = await axios.post(`${API_BASE}/holidays.php`, { action: 'seed', year });
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: res.data.message });
+        seededYearsRef.current.add(year);
+        await fetchHolidaysForYear(year);
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to seed holidays' });
+    }
+  };
+
+  const handleAddHoliday = async (e) => {
+    e.preventDefault();
+    if (!newHolidayName || !newHolidayDate) return;
+    try {
+      const res = await axios.post(`${API_BASE}/holidays.php`, {
+        name: newHolidayName,
+        holiday_date: newHolidayDate
+      });
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: res.data.message });
+        setShowAddHolidayModal(false);
+        setNewHolidayName('');
+        setNewHolidayDate('');
+        const year = parseInt(newHolidayDate.split('-')[0], 10);
+        await fetchHolidaysForYear(year);
+      } else {
+        addNotification({ type: 'error', message: res.data.message });
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to add holiday' });
+    }
+  };
+
+  const handleEditHoliday = async (id) => {
+    if (!editHolidayName || !editHolidayDate) return;
+    try {
+      const res = await axios.put(`${API_BASE}/holidays.php`, {
+        id,
+        name: editHolidayName,
+        holiday_date: editHolidayDate
+      });
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Holiday updated' });
+        setEditingHolidayId(null);
+        await fetchHolidaysForYear(holidayTableYear);
+      } else {
+        addNotification({ type: 'error', message: res.data.message });
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to update holiday' });
+    }
+  };
+
+  const handleDeleteHoliday = async (id) => {
+    if (!window.confirm('Delete this holiday?')) return;
+    try {
+      const res = await axios.delete(`${API_BASE}/holidays.php?id=${id}`);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Holiday deleted' });
+        await fetchHolidaysForYear(holidayTableYear);
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to delete holiday' });
+    }
+  };
+
+  // ---- Events API Functions ----
 
   const fetchEvents = async () => {
     try {
@@ -353,11 +486,70 @@ const CalendarPage = () => {
     });
   };
 
+  // Get holidays for a specific date
+  const getHolidaysForDate = (date) => {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}-${mm}-${dd}`;
+    return holidays.filter(h => h.holiday_date === dateStr);
+  };
+
+  // Get holidays for current month (for list view)
+  const getHolidaysForMonth = () => {
+    return holidays.filter(h => {
+      const parts = h.holiday_date.split('-');
+      const hYear = parseInt(parts[0], 10);
+      const hMonth = parseInt(parts[1], 10) - 1;
+      return hMonth === currentDate.getMonth() && hYear === currentDate.getFullYear();
+    });
+  };
+
+  // Get holidays filtered for admin table
+  const getHolidaysForTable = () => {
+    return holidays.filter(h => {
+      const hYear = parseInt(h.holiday_date.split('-')[0], 10);
+      return hYear === holidayTableYear;
+    });
+  };
+
   const handleEventClick = (evt) => {
     if (isAdmin && evt.status === 'pending') {
       setSelectedEvent(evt);
       setShowApproveModal(true);
     }
+  };
+
+  // Helper: render event icon
+  const getEventIcon = (evt) => {
+    if (evt.event_type === 'WS' || evt.title === 'Work Shift') return '💼';
+    if (evt.event_type === 'VL') return '🌴';
+    if (evt.event_type === 'HL' || evt.event_type === 'Holiday') return '🎉';
+    return null;
+  };
+
+  // Helper: render event display text
+  const getEventText = (evt) => {
+    if (evt.event_type === 'WS' || evt.title === 'Work Shift') return `WS - ${evt.user_name}`;
+    return `${evt.event_type === 'Other' ? '' : evt.event_type + ' - '}${evt.user_name} (${evt.title})`;
+  };
+
+  // Render a combined list of events + holidays for a date (used in all views)
+  const getCombinedItemsForDate = (date) => {
+    const dayEvents = getEventsForDate(date);
+    const dayHolidays = getHolidaysForDate(date);
+    // Convert holidays to a display format compatible with events
+    const holidayItems = dayHolidays.map(h => ({
+      id: `holiday-${h.id}`,
+      _isHoliday: true,
+      title: h.name,
+      event_type: 'holiday',
+      status: 'approved',
+      user_name: 'US Holiday',
+      description: h.is_observed === '1' || h.is_observed === 1 ? 'Observed date' : '',
+      event_date: h.holiday_date
+    }));
+    return [...holidayItems, ...dayEvents];
   };
 
   return (
@@ -413,16 +605,24 @@ const CalendarPage = () => {
                 <Clock size={16} /> Request Schedule
               </button>
             ) : (
-              <button className="action-btn create-btn" onClick={() => setShowAddModal(true)}>
-                <Plus size={16} /> Create
-              </button>
+              <>
+                <button 
+                  className={`action-btn ${viewMode === 'holidays' ? 'create-btn' : 'huddle-btn'}`} 
+                  onClick={() => setViewMode(viewMode === 'holidays' ? 'month' : 'holidays')}
+                >
+                  <CalendarIcon size={16} /> {viewMode === 'holidays' ? 'Show Calendar' : 'Check Holiday'}
+                </button>
+                <button className="action-btn create-btn" onClick={() => setShowAddModal(true)}>
+                  <Plus size={16} /> Create
+                </button>
+              </>
             )}
           </div>
 
         </div>
       </div>
 
-      <div className="calendar-content-area">
+      <div className="calendar-content-area" style={{ display: viewMode === 'holidays' ? 'none' : 'flex' }}>
         {viewMode === 'month' && (
           <div className="calendar-grid-container glass">
             <div className="calendar-days-header">
@@ -430,49 +630,57 @@ const CalendarPage = () => {
             </div>
             <div className="calendar-grid">
               {calendarCells.map((cell, idx) => {
-                const dayEvents = getEventsForDate(cell.date);
+                const combined = getCombinedItemsForDate(cell.date);
+                const dayHolidays = getHolidaysForDate(cell.date);
                 const isToday = new Date().toDateString() === cell.date.toDateString();
+                const hasHoliday = dayHolidays.length > 0;
                 const MAX_EVENTS = 2;
-                const displayedEvents = dayEvents.slice(0, MAX_EVENTS);
-                const extraEventsCount = dayEvents.length - MAX_EVENTS;
+                const displayedItems = combined.slice(0, MAX_EVENTS);
+                const extraCount = combined.length - MAX_EVENTS;
 
                 return (
                   <div
                     key={idx}
-                    className={`calendar-cell ${!cell.isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`}
+                    className={`calendar-cell ${!cell.isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${hasHoliday ? 'has-holiday' : ''}`}
                     onClick={() => { setSelectedDateForModal(cell.date); setShowDayModal(true); }}
                   >
                     <div className="date-header-row">
                       <span className="date-number">{cell.date.getDate()}</span>
-                      {dayEvents.length > 0 && <span className="date-badge">{dayEvents.length}/{dayEvents.length}</span>}
+                      {combined.length > 0 && <span className="date-badge">{combined.length}</span>}
                     </div>
                     <div className="events-container">
-                      {displayedEvents.map(evt => {
-                        let Icon = null;
-                        if (evt.event_type === 'WS' || evt.title === 'Work Shift') Icon = '💼';
-                        else if (evt.event_type === 'VL') Icon = '🌴';
-                        else if (evt.event_type === 'HL' || evt.event_type === 'Holiday') Icon = '🎉';
-                        
+                      {displayedItems.map(item => {
+                        if (item._isHoliday) {
+                          return (
+                            <div
+                              key={item.id}
+                              className="event-badge event-type-holiday"
+                              title={item.title}
+                            >
+                              <span className="event-icon">🎄</span>
+                              <span className="event-text">{item.title}</span>
+                            </div>
+                          );
+                        }
+                        const Icon = getEventIcon(item);
                         return (
                           <div
-                            key={evt.id}
-                            className={`event-badge event-status-${evt.status} event-type-${evt.event_type} ${evt.status === 'pending' ? 'pending' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); handleEventClick(evt); }}
-                            title={`${evt.title} - ${evt.user_name} (${evt.status})`}
+                            key={item.id}
+                            className={`event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
+                            title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
                             {Icon && <span className="event-icon">{Icon}</span>}
-                            <span className="event-text">
-                              {evt.event_type === 'WS' || evt.title === 'Work Shift' ? `WS - ${evt.user_name}` : `${evt.event_type === 'Other' ? '' : evt.event_type + ' - '}${evt.title}`}
-                            </span>
+                            <span className="event-text">{getEventText(item)}</span>
                           </div>
-                        )
+                        );
                       })}
-                      {extraEventsCount > 0 && (
+                      {extraCount > 0 && (
                         <div
                           className="more-events-link"
                           onClick={(e) => { e.stopPropagation(); setSelectedDateForModal(cell.date); setShowDayModal(true); }}
                         >
-                          +{extraEventsCount} more
+                          +{extraCount} more
                         </div>
                       )}
                     </div>
@@ -490,13 +698,15 @@ const CalendarPage = () => {
             </div>
             <div className="calendar-grid week-grid">
               {weekCells.map((cell, idx) => {
-                const dayEvents = getEventsForDate(cell.date);
+                const combined = getCombinedItemsForDate(cell.date);
+                const dayHolidays = getHolidaysForDate(cell.date);
                 const isToday = new Date().toDateString() === cell.date.toDateString();
+                const hasHoliday = dayHolidays.length > 0;
 
                 return (
                   <div
                     key={idx}
-                    className={`calendar-cell week-cell ${!cell.isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`}
+                    className={`calendar-cell week-cell ${!cell.isCurrentMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${hasHoliday ? 'has-holiday' : ''}`}
                     onClick={() => { setSelectedDateForModal(cell.date); setShowDayModal(true); }}
                   >
                     <div className="date-header-row">
@@ -506,25 +716,27 @@ const CalendarPage = () => {
                       </div>
                     </div>
                     <div className="events-container week-events-container">
-                      {dayEvents.map(evt => {
-                        let Icon = null;
-                        if (evt.event_type === 'WS' || evt.title === 'Work Shift') Icon = '💼';
-                        else if (evt.event_type === 'VL') Icon = '🌴';
-                        else if (evt.event_type === 'HL' || evt.event_type === 'Holiday') Icon = '🎉';
-                        
+                      {combined.map(item => {
+                        if (item._isHoliday) {
+                          return (
+                            <div key={item.id} className="event-badge week-event-badge event-type-holiday" title={item.title}>
+                              <span className="event-icon">🎄</span>
+                              <span className="event-text">{item.title}</span>
+                            </div>
+                          );
+                        }
+                        const Icon = getEventIcon(item);
                         return (
                           <div
-                            key={evt.id}
-                            className={`event-badge week-event-badge event-status-${evt.status} event-type-${evt.event_type} ${evt.status === 'pending' ? 'pending' : ''}`}
-                            onClick={(e) => { e.stopPropagation(); handleEventClick(evt); }}
-                            title={`${evt.title} - ${evt.user_name} (${evt.status})`}
+                            key={item.id}
+                            className={`event-badge week-event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                            onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
+                            title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
                             {Icon && <span className="event-icon">{Icon}</span>}
-                            <span className="event-text">
-                              {evt.event_type === 'WS' || evt.title === 'Work Shift' ? `WS - ${evt.user_name}` : evt.title}
-                            </span>
+                            <span className="event-text">{getEventText(item)}</span>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </div>
@@ -536,66 +748,220 @@ const CalendarPage = () => {
 
         {viewMode === 'list' && (
           <div className="calendar-list-view fade-in-up">
-            {getEventsForMonth().length === 0 ? (
-              <div className="no-events-state glass">
-                <CalendarIcon size={64} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '20px' }} />
-                <h3>No Events Found</h3>
-                <p>There are no events scheduled for {getDateDisplay()}.</p>
-                {isAdmin && (
-                  <button className="btn btn-primary" style={{ marginTop: '20px' }} onClick={() => setShowAddModal(true)}>
-                    Create First Event
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="list-events-container">
-                {Object.entries(
-                  getEventsForMonth().reduce((acc, evt) => {
-                    const dateStr = evt.event_date.split(' ')[0];
-                    if (!acc[dateStr]) acc[dateStr] = [];
-                    acc[dateStr].push(evt);
-                    return acc;
-                  }, {})
-                ).map(([dateStr, dayEvents]) => (
-                  <div key={dateStr} className="list-day-group glass">
-                    <div className="list-day-header">
-                      <div className="list-day-date">{new Date(dateStr).getDate()}</div>
-                      <div className="list-day-info">
-                        <span className="list-day-name">{new Date(dateStr).toLocaleString('default', { weekday: 'long' })}</span>
-                        <span className="list-day-month">{new Date(dateStr).toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+            {(() => {
+              const monthEvents = getEventsForMonth();
+              const monthHolidays = getHolidaysForMonth();
+              // Create combined items grouped by date
+              const allItems = {};
+              
+              monthHolidays.forEach(h => {
+                const dateStr = h.holiday_date;
+                if (!allItems[dateStr]) allItems[dateStr] = [];
+                allItems[dateStr].push({
+                  id: `holiday-${h.id}`,
+                  _isHoliday: true,
+                  title: h.name,
+                  event_type: 'holiday',
+                  status: 'approved',
+                  user_name: 'US Holiday',
+                  description: h.is_observed === '1' || h.is_observed === 1 ? 'Observed date' : '',
+                  event_date: h.holiday_date
+                });
+              });
+
+              monthEvents.forEach(evt => {
+                const dateStr = evt.event_date.split(' ')[0];
+                if (!allItems[dateStr]) allItems[dateStr] = [];
+                allItems[dateStr].push(evt);
+              });
+
+              const sortedEntries = Object.entries(allItems).sort(([a], [b]) => new Date(a) - new Date(b));
+
+              if (sortedEntries.length === 0) {
+                return (
+                  <div className="no-events-state glass">
+                    <CalendarIcon size={64} style={{ color: 'var(--primary)', opacity: 0.5, marginBottom: '20px' }} />
+                    <h3>No Events Found</h3>
+                    <p>There are no events scheduled for {getDateDisplay()}.</p>
+                    {isAdmin && (
+                      <button className="btn btn-primary" style={{ marginTop: '20px' }} onClick={() => setShowAddModal(true)}>
+                        Create First Event
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="list-events-container">
+                  {sortedEntries.map(([dateStr, dayItems]) => (
+                    <div key={dateStr} className="list-day-group glass">
+                      <div className="list-day-header">
+                        <div className="list-day-date">{new Date(dateStr + 'T00:00:00').getDate()}</div>
+                        <div className="list-day-info">
+                          <span className="list-day-name">{new Date(dateStr + 'T00:00:00').toLocaleString('default', { weekday: 'long' })}</span>
+                          <span className="list-day-month">{new Date(dateStr + 'T00:00:00').toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                        </div>
+                      </div>
+                      <div className="list-day-events">
+                        {dayItems.map(item => {
+                          if (item._isHoliday) {
+                            return (
+                              <div key={item.id} className="list-event-card event-status-approved">
+                                <div className="list-event-icon-bg event-type-holiday">🎄</div>
+                                <div className="list-event-content">
+                                  <h4 className="list-event-title">{item.title}</h4>
+                                  {item.description && <p className="list-event-desc">{item.description}</p>}
+                                </div>
+                                <div className="list-event-meta">
+                                  <span className="leave-request-pill event-type-holiday" style={{ background: 'rgba(220, 38, 38, 0.1)', color: '#dc2626', border: '1px solid rgba(220, 38, 38, 0.2)' }}>
+                                    Holiday
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          const Icon = getEventIcon(item);
+                          return (
+                            <div key={item.id} className={`list-event-card event-status-${item.status}`} onClick={() => handleEventClick(item)}>
+                              <div className={`list-event-icon-bg event-type-${item.event_type}`}>{Icon}</div>
+                              <div className="list-event-content">
+                                <h4 className="list-event-title">{getEventText(item)}</h4>
+                                {item.description && <p className="list-event-desc">{item.description}</p>}
+                              </div>
+                              <div className="list-event-meta">
+                                <span className={`leave-request-pill event-type-${item.event_type}`}>
+                                  {item.event_type === 'WS' || item.title === 'Work Shift' ? 'Work Shift' : (item.event_type === 'Other' ? 'Other' : item.event_type)}
+                                </span>
+                                <span className={`status-badge status-${item.status}`}>{item.status}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <div className="list-day-events">
-                      {dayEvents.map(evt => {
-                         let Icon = null;
-                         if (evt.event_type === 'WS' || evt.title === 'Work Shift') Icon = '💼';
-                         else if (evt.event_type === 'VL') Icon = '🌴';
-                         else if (evt.event_type === 'HL' || evt.event_type === 'Holiday') Icon = '🎉';
-                         
-                         return (
-                           <div key={evt.id} className={`list-event-card event-status-${evt.status}`} onClick={() => handleEventClick(evt)}>
-                             <div className={`list-event-icon-bg event-type-${evt.event_type}`}>{Icon}</div>
-                             <div className="list-event-content">
-                               <h4 className="list-event-title">{evt.event_type === 'WS' || evt.title === 'Work Shift' ? `WS - ${evt.user_name}` : evt.title}</h4>
-                               {evt.description && <p className="list-event-desc">{evt.description}</p>}
-                             </div>
-                             <div className="list-event-meta">
-                               <span className={`leave-request-pill event-type-${evt.event_type}`}>
-                                 {evt.event_type === 'WS' || evt.title === 'Work Shift' ? 'Work Shift' : (evt.event_type === 'Other' ? 'Other' : evt.event_type)}
-                               </span>
-                               <span className={`status-badge status-${evt.status}`}>{evt.status}</span>
-                             </div>
-                           </div>
-                         )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
+
+      {/* ========== HOLIDAYS MANAGEMENT TABLE (Admin Only) ========== */}
+      {isAdmin && viewMode === 'holidays' && (
+        <div className="holidays-section" style={{ marginTop: 0 }}>
+          <div className="holidays-section-header">
+            <h2><span className="holiday-icon">🎄</span> US Holidays</h2>
+            <div className="holidays-header-actions">
+              <select
+                className="holidays-year-select"
+                value={holidayTableYear}
+                onChange={(e) => setHolidayTableYear(parseInt(e.target.value, 10))}
+              >
+                {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 1 + i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <button className="seed-btn" onClick={() => handleSeedYear(holidayTableYear)}>
+                <RefreshCw size={14} /> Re-seed {holidayTableYear}
+              </button>
+              <button className="add-holiday-btn" onClick={() => setShowAddHolidayModal(true)}>
+                <Plus size={14} /> Add Holiday
+              </button>
+            </div>
+          </div>
+
+          <div className="holidays-table-container">
+            {getHolidaysForTable().length === 0 ? (
+              <div className="holidays-empty">
+                <span style={{ fontSize: '2rem' }}>🎄</span>
+                <p>No holidays for {holidayTableYear}.</p>
+                <button className="seed-btn" style={{ margin: '16px auto 0' }} onClick={() => handleSeedYear(holidayTableYear)}>
+                  <RefreshCw size={14} /> Seed US Holidays
+                </button>
+              </div>
+            ) : (
+              <table className="holidays-table">
+                <thead>
+                  <tr>
+                    <th>Holiday</th>
+                    <th>Date</th>
+                    <th>Day</th>
+                    <th>Observed</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {getHolidaysForTable().map(h => (
+                    <tr key={h.id}>
+                      <td>
+                        {editingHolidayId === h.id ? (
+                          <input
+                            className="holiday-edit-input"
+                            value={editHolidayName}
+                            onChange={e => setEditHolidayName(e.target.value)}
+                          />
+                        ) : (
+                          <div className="holiday-name-cell">
+                            <span className="holiday-dot"></span>
+                            {h.name}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        {editingHolidayId === h.id ? (
+                          <input
+                            type="date"
+                            className="holiday-edit-input"
+                            value={editHolidayDate}
+                            onChange={e => setEditHolidayDate(e.target.value)}
+                            max="9999-12-31"
+                          />
+                        ) : (
+                          <span className="holiday-date-cell">
+                            {new Date(h.holiday_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {new Date(h.holiday_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`holiday-observed-badge ${h.is_observed === '1' || h.is_observed === 1 ? 'observed-yes' : 'observed-no'}`}>
+                          {h.is_observed === '1' || h.is_observed === 1 ? '⚠ Observed' : '—'}
+                        </span>
+                      </td>
+                      <td>
+                        {editingHolidayId === h.id ? (
+                          <div className="holiday-edit-actions">
+                            <button className="holiday-save-btn" onClick={() => handleEditHoliday(h.id)}>Save</button>
+                            <button className="holiday-cancel-btn" onClick={() => setEditingHolidayId(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <div className="holiday-actions">
+                            <button
+                              className="holiday-action-btn"
+                              onClick={() => { setEditingHolidayId(h.id); setEditHolidayName(h.name); setEditHolidayDate(h.holiday_date); }}
+                            >
+                              <Edit2 size={13} /> Edit
+                            </button>
+                            <button className="holiday-action-btn delete" onClick={() => handleDeleteHoliday(h.id)}>
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add/Request Event Modal */}
       {showAddModal && (
@@ -671,40 +1037,59 @@ const CalendarPage = () => {
             </div>
 
             <div className="day-modal-body">
-              {getEventsForDate(selectedDateForModal).length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>No events for this day.</div>
-              ) : (
-                getEventsForDate(selectedDateForModal).map(evt => {
-                  let Icon = null;
-                  if (evt.event_type === 'WS' || evt.title === 'Work Shift') Icon = '💼';
-                  else if (evt.event_type === 'VL') Icon = '🌴';
-                  else if (evt.event_type === 'HL' || evt.event_type === 'Holiday') Icon = '🎉';
+              {(() => {
+                const combined = getCombinedItemsForDate(selectedDateForModal);
+                if (combined.length === 0) {
+                  return <div style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>No events for this day.</div>;
+                }
+                return combined.map(item => {
+                  if (item._isHoliday) {
+                    return (
+                      <div key={item.id} className="day-modal-event-card event-status-approved holiday-card">
+                        <div className="day-modal-event-title-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '18px', lineHeight: 1 }}>🎄</span>
+                          {item.title}
+                        </div>
+                        <div className="day-modal-event-details-row">
+                          <div className="leave-request-pill" style={{ background: 'rgba(220, 38, 38, 0.1)', color: '#dc2626', border: '1px solid rgba(220, 38, 38, 0.2)' }}>
+                            US Holiday
+                          </div>
+                          {item.description && (
+                            <div className="leave-request-pill">
+                              {item.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
 
+                  const Icon = getEventIcon(item);
                   return (
-                    <div key={evt.id} className={`day-modal-event-card event-status-${evt.status}`} onClick={() => { setShowDayModal(false); handleEventClick(evt); }}>
+                    <div key={item.id} className={`day-modal-event-card event-status-${item.status}`} onClick={() => { setShowDayModal(false); handleEventClick(item); }}>
                       <div className="day-modal-event-title-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {Icon ? <span style={{ fontSize: '18px', lineHeight: 1 }}>{Icon}</span> : <div style={{ width: '16px' }} />}
-                        {evt.event_type === 'WS' || evt.title === 'Work Shift' ? `WS - ${evt.user_name}` : evt.title}
+                        {getEventText(item)}
                       </div>
                       <div className="day-modal-event-details-row">
-                        {evt.event_type !== 'HL' && evt.event_type !== 'Holiday' && (
+                        {item.event_type !== 'HL' && item.event_type !== 'Holiday' && (
                           <div className="time-pill">
                             <Clock size={12} /> All Day
                           </div>
                         )}
                         <div className="leave-request-pill">
-                          {evt.event_type === 'WS' || evt.title === 'Work Shift' ? 'Work Shift' : (evt.event_type === 'Other' ? 'Other' : evt.event_type)}
+                          {item.event_type === 'WS' || item.title === 'Work Shift' ? 'Work Shift' : (item.event_type === 'Other' ? 'Other' : item.event_type)}
                         </div>
                       </div>
-                      {evt.description && <div style={{ fontSize: '0.85rem', opacity: 0.9, fontStyle: 'italic', marginTop: '4px' }}>{evt.description}</div>}
+                      {item.description && <div style={{ fontSize: '0.85rem', opacity: 0.9, fontStyle: 'italic', marginTop: '4px' }}>{item.description}</div>}
                     </div>
-                  )
-                })
-              )}
+                  );
+                });
+              })()}
             </div>
 
             <div className="day-modal-footer">
-              <div className="event-count">{getEventsForDate(selectedDateForModal).length} events</div>
+              <div className="event-count">{getCombinedItemsForDate(selectedDateForModal).length} events</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {!isAdmin && (
                   <button
@@ -805,6 +1190,45 @@ const CalendarPage = () => {
               </div>
               <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
                 Submit Reschedule
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Holiday Modal */}
+      {showAddHolidayModal && (
+        <div className="modal-overlay">
+          <div className="holiday-modal-content">
+            <div className="modal-header">
+              <h3>🎄 Add Custom Holiday</h3>
+              <button className="close-btn" onClick={() => setShowAddHolidayModal(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleAddHoliday} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div className="input-group">
+                <label>Holiday Name</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={newHolidayName}
+                  onChange={e => setNewHolidayName(e.target.value)}
+                  placeholder="e.g. Company Anniversary"
+                  required
+                />
+              </div>
+              <div className="input-group">
+                <label>Date</label>
+                <input
+                  type="date"
+                  className="input-field"
+                  value={newHolidayDate}
+                  onChange={e => setNewHolidayDate(e.target.value)}
+                  max="9999-12-31"
+                  required
+                />
+              </div>
+              <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)' }}>
+                Add Holiday
               </button>
             </form>
           </div>

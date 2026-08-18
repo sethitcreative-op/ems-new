@@ -15,7 +15,8 @@ const ProfilePage = () => {
   const [formData, setFormData] = useState({
     username: '',
     full_name: '',
-    password: ''
+    password: '',
+    sex: ''
   });
   const [profilePictureFile, setProfilePictureFile] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
@@ -28,7 +29,8 @@ const ProfilePage = () => {
         setFormData({
           username: user.username,
           full_name: user.full_name,
-          password: ''
+          password: '',
+          sex: user.sex || ''
         });
         setProfilePictureFile(null);
         setPreviewImage(user.profile_picture || null);
@@ -51,7 +53,8 @@ const ProfilePage = () => {
     setFormData({
       username: user.username,
       full_name: user.full_name,
-      password: ''
+      password: '',
+      sex: user.sex || ''
     });
     setProfilePictureFile(null);
     setPreviewImage(user.profile_picture || null);
@@ -69,6 +72,9 @@ const ProfilePage = () => {
       data.append('id', user.id);
       data.append('username', formData.username);
       data.append('full_name', formData.full_name);
+      if (formData.sex) {
+        data.append('sex', formData.sex);
+      }
       
       if (formData.password) {
         data.append('password', formData.password);
@@ -268,6 +274,13 @@ const ProfilePage = () => {
                 </div>
               </div>
               <div className="detail-row">
+                <div className="detail-icon"><User size={18} /></div>
+                <div className="detail-content">
+                  <span className="detail-label">Sex</span>
+                  <span className="detail-value">{user.sex || 'Not specified'}</span>
+                </div>
+              </div>
+              <div className="detail-row">
                 <div className="detail-icon"><Clock size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Member Since</span>
@@ -423,6 +436,15 @@ const ProfilePage = () => {
                   onChange={e => setFormData({...formData, username: e.target.value})} 
                   required 
                 />
+              </div>
+              <div className="modal-field">
+                <label>Sex</label>
+                <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
+                  <option value="">Select Sex</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
               <div className="modal-field">
                 <label>New Password <span className="field-hint">(leave blank to keep current)</span></label>

@@ -78,13 +78,14 @@ elseif ($method === 'PUT') {
         $user_id = $data->user_id ?? 0;
         
         $status = $data->status ?? null;
+        $is_admin = isset($data->is_admin) ? $data->is_admin : false;
         
         // Check if event is currently approved
         $checkStmt = $conn->prepare("SELECT status FROM events WHERE id = :id");
         $checkStmt->execute([':id' => $event_id]);
         $currentEvent = $checkStmt->fetch(PDO::FETCH_ASSOC);
 
-        if ($currentEvent && $currentEvent['status'] === 'approved') {
+        if (!$is_admin && $currentEvent && $currentEvent['status'] === 'approved') {
             // It's already approved. Create a NEW pending request linked to this one
             $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, reschedule_for_event_id) VALUES (:user_id, :title, :description, :event_date, :event_type, 'pending', :original_id)";
             $stmt = $conn->prepare($query);

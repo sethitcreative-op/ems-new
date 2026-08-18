@@ -95,13 +95,24 @@
   box-shadow: 0 10px 30px rgba(59, 130, 246, 0.5);
 }
 
+.logo-image-huge {
+  width: 85px;
+  height: 85px;
+  border-radius: 22px;
+  object-fit: cover;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4);
+  display: block;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
 .brand-title {
-  font-size: 3.5rem;
+  font-size: 4rem;
   font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 20px;
+  line-height: 1.1;
+  margin-bottom: 16px;
   color: #ffffff;
-  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 4px 25px rgba(0, 0, 0, 0.5);
+  letter-spacing: -1px;
 }
 
 .brand-subtitle {
@@ -123,31 +134,37 @@
 
 .float-card {
   position: absolute;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 20px;
+  gap: 18px;
+  padding: 18px 24px;
   color: white;
   animation: floatCard 8s infinite alternate ease-in-out;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.float-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.2);
 }
 
 .card-1 {
   width: max-content;
-  top: 25%;
-  right: 10%;
+  top: 15%;
+  right: 5%;
   animation-delay: -2s;
 }
 
 .card-2 {
   width: max-content;
-  bottom: 20%;
-  left: 10%;
+  bottom: 12%;
+  left: 8%;
   animation-delay: -4s;
   animation: floatCardAlt 9s infinite alternate ease-in-out;
 }

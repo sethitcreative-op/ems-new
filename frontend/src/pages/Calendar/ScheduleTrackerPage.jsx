@@ -107,6 +107,7 @@ const ScheduleTrackerPage = () => {
         const res = await axios.put(`${API_BASE}/calendar.php`, {
           id: editingEventId,
           action: 'edit',
+          is_admin: true,
           ...formData
         });
         if (res.data && res.data.status === 'success') {

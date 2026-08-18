@@ -12,6 +12,7 @@ const Header = () => {
   const profileDropdownRef = useRef(null);
   const user = JSON.parse(localStorage.getItem('user'));
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Let's actually add a state for user so header updates dynamically too
   const [userState, setUserState] = useState(user);
@@ -59,21 +60,37 @@ const Header = () => {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
-    window.location.href = '/login';
+    setIsLoggingOut(true);
+    document.body.classList.add('fade-out-exit');
+    setTimeout(() => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      document.body.classList.remove('fade-out-exit');
+      window.location.href = '/login';
+    }, 2000);
   };
 
 
 
 
   return (
-    <header className="global-header">
+    <>
+      {isLoggingOut && (
+        <div className="fullscreen-loader">
+          <div className="loader-logo-container">
+            <img src="/img/logo.jpg" alt="WorkTrack Logo" className="loader-logo" />
+            <div className="loader-spinner"></div>
+          </div>
+          <div className="loader-text">Logging out...</div>
+        </div>
+      )}
+      <header className="global-header">
       <div className="header-left-widget">
         <div className="header-logo-section">
-          <div className="logo-icon-wrapper">
-            <Activity size={18} className="logo-icon" />
+          <div className="logo-icon-wrapper" style={{ background: 'transparent', padding: 0 }}>
+            <img src="/img/logo.jpg" alt="WorkTrack Logo" style={{ width: '28px', height: '28px', borderRadius: '8px', objectFit: 'cover', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
           </div>
-          <span className="logo-text">Schedule Management Tracker</span>
+          <span className="logo-text" style={{ fontSize: '1.2rem', fontWeight: '700' }}>WorkTrack</span>
         </div>
 
         <div className="header-divider"></div>
@@ -176,6 +193,7 @@ const Header = () => {
         </div>
       </div>
     </header>
+    </>
   );
 };
 

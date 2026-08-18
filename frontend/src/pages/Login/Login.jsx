@@ -18,6 +18,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,7 +30,12 @@ const Login = () => {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
+    
     try {
+      // Add a slight artificial delay so the user can see the loading state (system preparing)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // In a real environment, replace this with actual local IP or URL
       const response = await axios.post(`${API_BASE}/auth.php`, {
         action: 'login',
@@ -43,14 +49,25 @@ const Login = () => {
         navigate('/dtr');
       } else {
         setError(response.data?.message || 'Invalid response from server. Check backend connection.');
+        setIsLoading(false);
       }
     } catch (err) {
       setError('Connection to backend failed. Make sure your local server is running.');
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="login-container">
+      {isLoading && (
+        <div className="fullscreen-loader">
+          <div className="loader-logo-container">
+            <img src="/img/logo.jpg" alt="WorkTrack Logo" className="loader-logo" />
+            <div className="loader-spinner"></div>
+          </div>
+          <div className="loader-text">Preparing System...</div>
+        </div>
+      )}
       <div className="login-left-pane">
         {backgroundImages.map((img, index) => (
           <div
@@ -80,9 +97,9 @@ const Login = () => {
 
         <div className="brand-content">
           <div className="brand-icon-wrapper">
-            <div className="logo-icon-huge">E</div>
+            <img src="/img/logo.jpg" alt="WorkTrack Logo" className="logo-image-huge" />
           </div>
-          <h1 className="brand-title">Schedule Management<br />Tracker</h1>
+          <h1 className="brand-title">WorkTrack</h1>
           <p className="brand-subtitle">Elevate your workforce with our state-of-the-art management system.</p>
         </div>
       </div>

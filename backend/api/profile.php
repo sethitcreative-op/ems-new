@@ -33,6 +33,7 @@ if ($method === 'POST') {
     $username = $_POST['username'] ?? '';
     $full_name = $_POST['full_name'] ?? '';
     $password = $_POST['password'] ?? '';
+    $sex = $_POST['sex'] ?? null;
     
     $profile_picture = null;
     if (isset($_FILES['profile_picture']) && $_FILES['profile_picture']['error'] == 0) {
@@ -49,8 +50,8 @@ if ($method === 'POST') {
         exit;
     }
 
-    $query = "UPDATE users SET username=:username, full_name=:name";
-    $params = [':username'=>$username, ':name'=>$full_name, ':id'=>$id];
+    $query = "UPDATE users SET username=:username, full_name=:name, sex=:sex";
+    $params = [':username'=>$username, ':name'=>$full_name, ':sex'=>$sex, ':id'=>$id];
 
     if (!empty($password)) {
         $password_hash = password_hash($password, PASSWORD_BCRYPT);
@@ -70,7 +71,7 @@ if ($method === 'POST') {
         $stmt->execute($params);
         
         // Fetch updated user to send back
-        $fetch_query = "SELECT id, username, role, full_name, hourly_rate, profile_picture, created_at FROM users WHERE id = :id";
+        $fetch_query = "SELECT id, username, role, full_name, hourly_rate, profile_picture, sex, created_at FROM users WHERE id = :id";
         $fetch_stmt = $conn->prepare($fetch_query);
         $fetch_stmt->execute([':id' => $id]);
         $updated_user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);

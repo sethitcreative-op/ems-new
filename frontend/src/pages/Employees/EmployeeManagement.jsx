@@ -64,7 +64,8 @@ const EmployeeManagement = () => {
     email: '',
     phone: '',
     address: '',
-    id_number: ''
+    id_number: '',
+    sex: ''
   });
   const [profilePictureFile, setProfilePictureFile] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
@@ -94,6 +95,9 @@ const EmployeeManagement = () => {
       data.append('phone', formData.phone);
       data.append('address', formData.address);
       data.append('id_number', formData.id_number);
+      if (formData.sex) {
+        data.append('sex', formData.sex);
+      }
       
       if (formData.password) {
         data.append('password', formData.password);
@@ -123,7 +127,7 @@ const EmployeeManagement = () => {
         window.dispatchEvent(new Event('userUpdated'));
       }
       
-      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '' });
+      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
       setProfilePictureFile(null);
       setPreviewImage(null);
       setEditingId(null);
@@ -145,7 +149,8 @@ const EmployeeManagement = () => {
       email: emp.email || '',
       phone: emp.phone || '',
       address: emp.address || '',
-      id_number: emp.id_number || ''
+      id_number: emp.id_number || '',
+      sex: emp.sex || ''
     });
     setProfilePictureFile(null);
     setPreviewImage(emp.profile_picture || null);
@@ -156,7 +161,7 @@ const EmployeeManagement = () => {
 
   const toggleForm = () => {
     if (editingId) {
-      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '' });
+      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
       setEditingId(null);
     }
     setProfilePictureFile(null);
@@ -168,7 +173,7 @@ const EmployeeManagement = () => {
   const closeModal = () => {
     setIsModalOpen(false);
     setTimeout(() => {
-      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '' });
+      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
       setProfilePictureFile(null);
       setPreviewImage(null);
       setEditingId(null);
@@ -320,6 +325,15 @@ const EmployeeManagement = () => {
                   <div className="modal-field">
                     <label>Username</label>
                     <input type="text" className="input-field" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} required />
+                  </div>
+                  <div className="modal-field">
+                    <label>Sex</label>
+                    <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
+                      <option value="">Select Sex</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
                   </div>
                   <div className="modal-field">
                     <label>New Password {editingId && <span className="field-hint">(leave blank to keep current)</span>}</label>
@@ -539,6 +553,10 @@ const EmployeeManagement = () => {
                         <div className="info-group">
                           <label>Phone Number</label>
                           <p>{selectedEmployeeForView.phone || '--'}</p>
+                        </div>
+                        <div className="info-group">
+                          <label>Sex</label>
+                          <p>{selectedEmployeeForView.sex || '--'}</p>
                         </div>
                         <div className="info-group">
                           <label>Address</label>
