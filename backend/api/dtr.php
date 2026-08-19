@@ -90,7 +90,106 @@ if ($action === 'clock_in') {
         $stmt = $conn->prepare($query);
         $stmt->execute();
     }
+    
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(["status" => "success", "data" => $records]);
+} elseif ($action === 'edit_record') {
+    // Admin Edit Record
+    $record_id = $data->record_id;
+    $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
+    $pm_out = isset($data->pm_out) && $data->pm_out !== '' ? $data->pm_out : null;
+    $status = isset($data->status) ? $data->status : 'Present';
+    
+    // Fetch user info to calculate earnings
+    $fetch_query = "SELECT u.id as user_id, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.id = :record_id";
+    $fetch_stmt = $conn->prepare($fetch_query);
+    $fetch_stmt->execute([':record_id' => $record_id]);
+    $record = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($record) {
+        $total_hours = 0;
+        $earnings = 0;
+        
+        if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
+            $am_in_seconds = strtotime($am_in);
+            $pm_out_seconds = strtotime($pm_out);
+            $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
+            $total_hours = round($diff_seconds / 3600, 2);
+            $earnings = round($total_hours * $record['hourly_rate'], 2);
+        }
+
+        $query = "UPDATE attendance SET am_in = :am_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status WHERE id = :record_id";
+        $stmt = $conn->prepare($query);
+        $stmt->execute([
+            ':am_in' => $am_in,
+            ':pm_out' => $pm_out,
+            ':total_hours' => $total_hours,
+            ':earnings' => $earnings,
+            ':status' => $status,
+            ':record_id' => $record_id
+        ]);
+        
+        // Log action (assuming admin is performing this, but we don't have admin ID in $data unless passed, we'll log against the affected user_id for simplicity or skip)
+        // logAction($conn, $record['user_id'], 'DTR_ADMIN_EDIT', "Admin edited record {$record_id}");
+        
+        echo json_encode(["status" => "success", "message" => "Record updated successfully"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Record not found"]);
+    }
+
+} elseif ($action === 'add_record') {
+    // Admin Add Record
+    $user_id = $data->user_id;
+    $date = $data->date;
+    $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
+    $pm_out = isset($data->pm_out) && $data->pm_out !== '' ? $data->pm_out : null;
+    $status = isset($data->status) ? $data->status : 'Present';
+    
+    $fetch_user = "SELECT hourly_rate FROM users WHERE id = :user_id";
+    $fetch_stmt = $conn->prepare($fetch_user);
+    $fetch_stmt->execute([':user_id' => $user_id]);
+    $user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($user) {
+        $total_hours = 0;
+        $earnings = 0;
+
+        if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
+            $am_in_seconds = strtotime($am_in);
+            $pm_out_seconds = strtotime($pm_out);
+            $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
+            $total_hours = round($diff_seconds / 3600, 2);
+            $earnings = round($total_hours * $user['hourly_rate'], 2);
+        }
+
+        $query = "INSERT INTO attendance (user_id, date, am_in, pm_out, total_hours, earnings, status) 
+                  VALUES (:user_id, :date, :am_in, :pm_out, :total_hours, :earnings, :status)
+                  ON DUPLICATE KEY UPDATE am_in = :am_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status";
+        $stmt = $conn->prepare($query);
+        $stmt->execute([
+            ':user_id' => $user_id,
+            ':date' => $date,
+            ':am_in' => $am_in,
+            ':pm_out' => $pm_out,
+            ':total_hours' => $total_hours,
+            ':earnings' => $earnings,
+            ':status' => $status
+        ]);
+        
+        echo json_encode(["status" => "success", "message" => "Record added successfully"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "User not found"]);
+    }
+
+} elseif ($action === 'delete_record') {
+    $record_id = isset($_GET['record_id']) ? $_GET['record_id'] : (isset($data->record_id) ? $data->record_id : null);
+    if ($record_id) {
+        $query = "DELETE FROM attendance WHERE id = :record_id";
+        $stmt = $conn->prepare($query);
+        $stmt->execute([':record_id' => $record_id]);
+        echo json_encode(["status" => "success", "message" => "Record deleted successfully"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Record ID required"]);
+    }
 }
 ?>

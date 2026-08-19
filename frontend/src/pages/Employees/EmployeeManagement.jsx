@@ -286,111 +286,155 @@ const EmployeeManagement = () => {
 
       {isModalOpen && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-content glass" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{editingId ? 'Edit Employee' : 'Add Employee'}</h3>
-              <button className="modal-close-btn" onClick={closeModal}>
-                <X size={20} />
-              </button>
-            </div>
+          <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'row', width: '850px', maxWidth: '95vw', padding: 0, maxHeight: '85vh', overflow: 'hidden', borderRadius: '16px' }}>
             
-            <div className="modal-tabs">
-              <button className={`modal-tab ${activeModalTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveModalTab('profile')}>Profile</button>
-              <button className={`modal-tab ${activeModalTab === 'compensation' ? 'active' : ''}`} onClick={() => setActiveModalTab('compensation')}>Compensation</button>
-              <button className={`modal-tab ${activeModalTab === 'government' ? 'active' : ''}`} onClick={() => setActiveModalTab('government')}>Gov ID</button>
-              <button className={`modal-tab ${activeModalTab === 'schedule' ? 'active' : ''}`} onClick={() => setActiveModalTab('schedule')}>Sched</button>
+            {/* Left Sidebar */}
+            <div style={{ flex: '0 0 250px', borderRight: '1px solid var(--card-border)', padding: '24px', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--sidebar-bg, rgba(0,0,0,0.02))' }}>
+              <div style={{ marginBottom: '32px' }}>
+                <h3 className="modal-title" style={{ margin: 0 }}>{editingId ? 'Edit Employee' : 'Add Employee'}</h3>
+              </div>
+              
+              <div className="modal-avatar-section" style={{ marginBottom: '32px', textAlign: 'center' }}>
+                <div className="modal-avatar-preview" style={{ width: '80px', height: '80px', margin: '0 auto 12px' }}>
+                   {previewImage ? (
+                     <img src={renderProfilePicture(previewImage)} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                   ) : (
+                     <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: 'var(--card-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                       <User size={32} style={{ opacity: 0.4 }} />
+                     </div>
+                   )}
+                </div>
+                <label className="modal-avatar-upload" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--primary-color, #3b82f6)', cursor: 'pointer', fontWeight: '500' }}>
+                  Change Picture
+                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { id: 'profile', label: 'Profile Details' },
+                  { id: 'compensation', label: 'Compensation' },
+                  { id: 'government', label: 'Government ID' },
+                  { id: 'schedule', label: 'Schedule' }
+                ].map(tab => (
+                   <button 
+                     key={tab.id}
+                     type="button"
+                     onClick={() => setActiveModalTab(tab.id)}
+                     style={{
+                       padding: '12px 16px',
+                       textAlign: 'left',
+                       background: activeModalTab === tab.id ? 'var(--primary-color, #3b82f6)' : 'transparent',
+                       color: activeModalTab === tab.id ? '#fff' : 'var(--text-main)',
+                       border: 'none',
+                       borderRadius: '8px',
+                       cursor: 'pointer',
+                       fontWeight: activeModalTab === tab.id ? '600' : '400',
+                       transition: 'all 0.2s'
+                     }}
+                   >
+                     {tab.label}
+                   </button>
+                ))}
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="modal-form">
-              {activeModalTab === 'profile' && (
-                <div className="form-section animate-panel">
-                  <div className="modal-avatar-section" style={{ marginBottom: '20px' }}>
-                    <div className="modal-avatar-preview">
-                       {previewImage ? (
-                         <img src={renderProfilePicture(previewImage)} alt="Preview" />
-                       ) : (
-                         <User size={36} style={{ opacity: 0.4 }} />
-                       )}
+            {/* Right Content */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxHeight: '100%', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px 0' }}>
+                <button className="modal-close-btn" onClick={closeModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px', display: 'flex', flexDirection: 'column' }}>
+                {activeModalTab === 'profile' && (
+                  <div className="form-section animate-panel">
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Profile Details</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="modal-field">
+                        <label>Full Name</label>
+                        <input type="text" className="input-field" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} required />
+                      </div>
+                      <div className="modal-field">
+                        <label>Username</label>
+                        <input type="text" className="input-field" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} required />
+                      </div>
+                      <div className="modal-field">
+                        <label>Sex</label>
+                        <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
+                          <option value="">Select Sex</option>
+                          <option value="Male">Male</option>
+                          <option value="Female">Female</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="modal-field">
+                        <label>Role</label>
+                        <select className="input-field" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                          <option value="user">User</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </div>
                     </div>
-                    <label className="modal-avatar-upload">
-                      Change Picture
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
-                    </label>
+                    <div className="modal-field" style={{ marginTop: '16px' }}>
+                      <label>New Password {editingId && <span className="field-hint">(leave blank to keep current)</span>}</label>
+                      <input type="password" className="input-field" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!editingId} />
+                    </div>
                   </div>
+                )}
 
-                  <div className="modal-field">
-                    <label>Full Name</label>
-                    <input type="text" className="input-field" value={formData.full_name} onChange={e => setFormData({...formData, full_name: e.target.value})} required />
+                {activeModalTab === 'compensation' && (
+                  <div className="form-section animate-panel">
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Compensation & Contact</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div className="modal-field">
+                        <label>Email Address</label>
+                        <input type="email" className="input-field" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                      </div>
+                      <div className="modal-field">
+                        <label>Phone Number</label>
+                        <input type="text" className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                      </div>
+                      <div className="modal-field" style={{ gridColumn: '1 / -1' }}>
+                        <label>Address</label>
+                        <input type="text" className="input-field" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                      </div>
+                      <div className="modal-field">
+                        <label>Hourly Rate ($)</label>
+                        <input type="number" step="0.01" className="input-field" required value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} />
+                      </div>
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <label>Username</label>
-                    <input type="text" className="input-field" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} required />
+                )}
+
+                {activeModalTab === 'government' && (
+                  <div className="form-section animate-panel">
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Government ID</h4>
+                    <div className="modal-field">
+                      <label>Government ID Number</label>
+                      <input type="text" className="input-field" value={formData.id_number} onChange={e => setFormData({...formData, id_number: e.target.value})} />
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <label>Sex</label>
-                    <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
-                      <option value="">Select Sex</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                      <option value="Other">Other</option>
-                    </select>
+                )}
+
+                {activeModalTab === 'schedule' && (
+                  <div className="form-section animate-panel">
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Schedule</h4>
+                    <div className="modal-field">
+                      <p className="field-hint" style={{ margin: 0 }}>User schedules are managed via the Calendar module.</p>
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <label>New Password {editingId && <span className="field-hint">(leave blank to keep current)</span>}</label>
-                    <input type="password" className="input-field" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!editingId} />
-                  </div>
-                  <div className="modal-field">
-                    <label>Role</label>
-                    <select className="input-field" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
+                )}
+
+                <div style={{ marginTop: 'auto', paddingTop: '32px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                   <button type="button" className="btn btn-ghost" onClick={closeModal} style={{ padding: '10px 24px', borderRadius: '8px' }}>Cancel</button>
+                   <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px', borderRadius: '8px' }}>
+                     {loading ? <><span className="spinner"></span> Saving...</> : (editingId ? "Update Employee" : "Save Employee")}
+                   </button>
                 </div>
-              )}
-
-              {activeModalTab === 'compensation' && (
-                <div className="form-section animate-panel">
-                  <div className="modal-field">
-                    <label>Email Address</label>
-                    <input type="email" className="input-field" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
-                  </div>
-                  <div className="modal-field">
-                    <label>Phone Number</label>
-                    <input type="text" className="input-field" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
-                  </div>
-                  <div className="modal-field">
-                    <label>Address</label>
-                    <input type="text" className="input-field" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
-                  </div>
-                  <div className="modal-field">
-                    <label>Hourly Rate ($)</label>
-                    <input type="number" step="0.01" className="input-field" required value={formData.hourly_rate} onChange={e => setFormData({...formData, hourly_rate: e.target.value})} />
-                  </div>
-                </div>
-              )}
-
-              {activeModalTab === 'government' && (
-                <div className="form-section animate-panel">
-                  <div className="modal-field">
-                    <label>Government ID Number</label>
-                    <input type="text" className="input-field" value={formData.id_number} onChange={e => setFormData({...formData, id_number: e.target.value})} />
-                  </div>
-                </div>
-              )}
-
-              {activeModalTab === 'schedule' && (
-                <div className="form-section animate-panel">
-                  <div className="modal-field">
-                    <p className="field-hint" style={{ margin: 0 }}>User schedules are managed via the Calendar module.</p>
-                  </div>
-                </div>
-              )}
-
-              <button type="submit" className="modal-submit-btn" disabled={loading}>
-                {loading ? <><span className="spinner"></span> Saving...</> : (editingId ? "Update Employee" : "Save Employee")}
-              </button>
-            </form>
+              </form>
+            </div>
           </div>
         </div>
       )}

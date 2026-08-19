@@ -303,66 +303,68 @@ const ScheduleTrackerPage = () => {
       {/* New Schedule Modal */}
       {isModalOpen && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div className="glass" style={{ width: '100%', maxWidth: '500px', padding: '24px', borderRadius: '16px' }}>
+          <div className="glass" style={{ backgroundColor: 'var(--card-bg)', width: '100%', maxWidth: '600px', padding: '32px', borderRadius: '16px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0, 0, 0, 0.4)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'white', margin: 0 }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
                 {editingEventId ? 'Edit Schedule' : 'Assign New Schedule'}
               </h2>
               <button onClick={() => setIsModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <X size={20} />
+                <X size={24} />
               </button>
             </div>
             
-            <form onSubmit={handleCreateSchedule} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Employee</label>
-                <select 
-                  className="input-field" 
-                  required
-                  value={formData.user_id}
-                  onChange={(e) => setFormData({...formData, user_id: e.target.value})}
-                >
-                  <option value="">Select Employee</option>
-                  {allEmployees.map(emp => (
-                    <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-                  ))}
-                </select>
-              </div>
+            <form onSubmit={handleCreateSchedule} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Employee</label>
+                  <select 
+                    className="input-field" 
+                    required
+                    value={formData.user_id}
+                    onChange={(e) => setFormData({...formData, user_id: e.target.value})}
+                  >
+                    <option value="">Select Employee</option>
+                    {allEmployees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Date</label>
-                <input 
-                  type="date" 
-                  className="input-field"
-                  required
-                  value={formData.event_date}
-                  onChange={handleDateChange}
-                />
-              </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Date</label>
+                  <input 
+                    type="date" 
+                    className="input-field"
+                    required
+                    value={formData.event_date}
+                    onChange={handleDateChange}
+                  />
+                </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Type</label>
-                <select 
-                  className="input-field" 
-                  value={formData.event_type}
-                  onChange={(e) => setFormData({...formData, event_type: e.target.value})}
-                >
-                  <option value="WS">Work Shift (WS)</option>
-                  <option value="VL">Vacation Leave (VL)</option>
-                  <option value="HL">Holiday (HL)</option>
-                </select>
-              </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Type</label>
+                  <select 
+                    className="input-field" 
+                    value={formData.event_type}
+                    onChange={(e) => setFormData({...formData, event_type: e.target.value})}
+                  >
+                    <option value="WS">Work Shift (WS)</option>
+                    <option value="VL">Vacation Leave (VL)</option>
+                    <option value="HL">Holiday (HL)</option>
+                  </select>
+                </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Title</label>
-                <input 
-                  type="text" 
-                  className="input-field"
-                  required
-                  placeholder="e.g., Regular Shift"
-                  value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                />
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Title</label>
+                  <input 
+                    type="text" 
+                    className="input-field"
+                    required
+                    placeholder="e.g., Regular Shift"
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  />
+                </div>
               </div>
 
               <div>
@@ -377,7 +379,7 @@ const ScheduleTrackerPage = () => {
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">
                   {editingEventId ? 'Save Changes' : 'Assign Schedule'}

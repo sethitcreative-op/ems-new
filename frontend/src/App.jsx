@@ -10,6 +10,8 @@ import ApprovalRequestsPage from './pages/Calendar/ApprovalRequestsPage';
 import MyRequestsPage from './pages/Calendar/MyRequestsPage';
 import ScheduleTrackerPage from './pages/Calendar/ScheduleTrackerPage';
 import SystemLogsPage from './pages/SystemLogs/SystemLogsPage';
+import LeaveTracker from './pages/Leaves/LeaveTracker';
+import LeaveManagement from './pages/Leaves/LeaveManagement';
 import { NotificationProvider } from './context/NotificationContext';
 
 const ProtectedRoute = ({ children }) => {
@@ -44,6 +46,8 @@ function App() {
             <Route path="employees" element={<EmployeeManagement />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="logs" element={<SystemLogsPage />} />
+            <Route path="leave-tracker" element={<LeaveTracker />} />
+            <Route path="leave-management" element={<LeaveManagement />} />
           </Route>
         </Routes>
       </BrowserRouter>

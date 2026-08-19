@@ -74,3 +74,29 @@ CREATE TABLE IF NOT EXISTS holidays (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_holiday (name, year)
 );
+CREATE TABLE IF NOT EXISTS leave_balances (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    leave_type VARCHAR(50) DEFAULT 'Vacation Leave',
+    total_days DECIMAL(5,2) DEFAULT 0.00,
+    used_days DECIMAL(5,2) DEFAULT 0.00,
+    year INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY user_leave_year (user_id, leave_type, year)
+);
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    leave_type VARCHAR(50) DEFAULT 'Vacation Leave',
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    total_days DECIMAL(5,2) NOT NULL,
+    reason TEXT,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    admin_remarks TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+

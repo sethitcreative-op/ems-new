@@ -208,9 +208,21 @@ const Sidebar = () => {
           <span>My Profile</span>
         </NavLink>
 
+        {!isAdmin && (
+          <NavLink to="/leave-tracker" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <span>Leave Tracker</span>
+          </NavLink>
+        )}
+
         {isAdmin && (
           <NavLink to="/employees" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <span>Employee Management</span>
+          </NavLink>
+        )}
+
+        {isAdmin && (
+          <NavLink to="/leave-management" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <span>Leave Management</span>
           </NavLink>
         )}
 

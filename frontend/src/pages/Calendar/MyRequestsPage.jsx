@@ -128,15 +128,24 @@ const MyRequestsPage = () => {
             </thead>
             <tbody>
               {requests.length > 0 ? (
-                requests.map((req) => (
+                requests.map((req) => {
+                  const formatLocalDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    // Handle both YYYY-MM-DD and YYYY-MM-DD HH:MM:SS
+                    const datePart = dateStr.split(' ')[0];
+                    const [year, month, day] = datePart.split('-');
+                    return `${parseInt(month, 10)}/${parseInt(day, 10)}/${year}`;
+                  };
+                  
+                  return (
                   <tr key={req.id}>
-                    <td>{new Date(req.created_at || Date.now()).toLocaleDateString()}</td>
+                    <td>{req.created_at ? formatLocalDate(req.created_at) : new Date().toLocaleDateString()}</td>
                     <td style={{ verticalAlign: 'middle' }}>
                       <span className={`event-badge event-type-${req.event_type === 'Other' ? 'WS' : req.event_type}`} style={{ display: 'inline-block', width: 'max-content' }}>
                         {req.event_type === 'WS' || req.title === 'Work Shift' ? 'Work Shift' : req.event_type === 'VL' ? 'Vacation Leave' : req.event_type === 'HL' ? 'Holiday' : req.event_type}
                       </span>
                     </td>
-                    <td>{new Date(req.event_date).toLocaleDateString()}</td>
+                    <td>{formatLocalDate(req.event_date)}</td>
                     <td>
                       <div><strong>{req.title}</strong></div>
                       {req.description && <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{req.description}</div>}
@@ -184,7 +193,8 @@ const MyRequestsPage = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+              })
               ) : (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>

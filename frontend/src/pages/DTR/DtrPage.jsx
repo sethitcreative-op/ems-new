@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Download, CheckCircle, Clock, Filter, Settings, Calendar as CalendarIcon, ChevronDown, CalendarDays, Users, ListFilter } from 'lucide-react';
+import { Download, CheckCircle, Clock, Filter, Settings, Calendar as CalendarIcon, ChevronDown, CalendarDays, Users, ListFilter, Edit, Trash2, Plus, X } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import './DtrPage.css';
 import API_BASE from '../../config/api';
+import CustomWeekPicker from '../../components/common/CustomWeekPicker';
 
 const ActiveTimer = ({ activeShift }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -119,24 +120,34 @@ const DtrPage = () => {
   const [exportMonth, setExportMonth] = useState(new Date().toISOString().slice(0, 7));
   const [exportWeekStr, setExportWeekStr] = useState(() => {
     const today = new Date();
-    const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    const dayOfWeek = today.getDay();
+    const diff = (dayOfWeek + 7 - 4) % 7;
+    const start = new Date(today);
+    start.setDate(today.getDate() - diff);
+    return getLocalDateStr(start);
   });
 
   // Dynamic Date Filter State
   const [dtrFilterType, setDtrFilterType] = useState('week'); // 'month', 'week', 'day'
   const [dtrFilterValue, setDtrFilterValue] = useState(() => {
     const today = new Date();
-    const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    const dayOfWeek = today.getDay();
+    const diff = (dayOfWeek + 7 - 4) % 7;
+    const start = new Date(today);
+    start.setDate(today.getDate() - diff);
+    return getLocalDateStr(start);
+  });
+
+  // Admin Edit Modal State
+  const [editModal, setEditModal] = useState({
+    isOpen: false,
+    mode: 'edit', // 'edit' or 'add'
+    recordId: null,
+    targetUserId: null,
+    dateStr: '',
+    amIn: '',
+    pmOut: '',
+    status: 'Present'
   });
 
   const handleFilterTypeChange = (e) => {
@@ -148,12 +159,11 @@ const DtrPage = () => {
     } else if (type === 'day') {
       setDtrFilterValue(getLocalDateStr(today));
     } else if (type === 'week') {
-      const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-      const dayNum = d.getUTCDay() || 7;
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-      const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-      setDtrFilterValue(`${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`);
+      const dayOfWeek = today.getDay();
+      const diff = (dayOfWeek + 7 - 4) % 7;
+      const start = new Date(today);
+      start.setDate(today.getDate() - diff);
+      setDtrFilterValue(getLocalDateStr(start));
     }
   };
 
@@ -164,12 +174,11 @@ const DtrPage = () => {
     } else if (dtrFilterType === 'day') {
       setDtrFilterValue(getLocalDateStr(today));
     } else if (dtrFilterType === 'week') {
-      const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-      const dayNum = d.getUTCDay() || 7;
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-      const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-      setDtrFilterValue(`${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`);
+      const dayOfWeek = today.getDay();
+      const diff = (dayOfWeek + 7 - 4) % 7;
+      const start = new Date(today);
+      start.setDate(today.getDate() - diff);
+      setDtrFilterValue(getLocalDateStr(start));
     }
   };
 
@@ -224,6 +233,78 @@ const DtrPage = () => {
     return `${hours}:${minutes}:${seconds}`;
   };
 
+  const openEditModal = (record, dayObj, targetUserId) => {
+    if (record) {
+      setEditModal({
+        isOpen: true,
+        mode: 'edit',
+        recordId: record.id,
+        targetUserId: record.user_id,
+        dateStr: record.date,
+        amIn: record.am_in ? record.am_in.split(' ')[1] : '',
+        pmOut: record.pm_out ? record.pm_out.split(' ')[1] : '',
+        status: record.status || 'Present'
+      });
+    } else {
+      setEditModal({
+        isOpen: true,
+        mode: 'add',
+        recordId: null,
+        targetUserId: targetUserId,
+        dateStr: dayObj.dateStr,
+        amIn: '',
+        pmOut: '',
+        status: 'Present'
+      });
+    }
+  };
+
+  const handleSaveModal = async () => {
+    try {
+      const amInDate = editModal.amIn ? `${editModal.dateStr} ${editModal.amIn}` : '';
+      const pmOutDate = editModal.pmOut ? `${editModal.dateStr} ${editModal.pmOut}` : '';
+
+      const payload = {
+        action: editModal.mode === 'edit' ? 'edit_record' : 'add_record',
+        record_id: editModal.recordId,
+        user_id: editModal.targetUserId,
+        date: editModal.dateStr,
+        am_in: amInDate,
+        pm_out: pmOutDate,
+        status: editModal.status
+      };
+
+      const res = await axios.post(`${API_BASE}/dtr.php`, payload);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: res.data.message });
+        setEditModal({ ...editModal, isOpen: false });
+        fetchRecords();
+      } else {
+        addNotification({ type: 'error', message: res.data.message || 'Failed to save record.' });
+      }
+    } catch (err) {
+      console.error(err);
+      addNotification({ type: 'error', message: 'Network error while saving record.' });
+    }
+  };
+
+  const handleDeleteRecord = async (recordId) => {
+    if (!window.confirm("Are you sure you want to delete this DTR record?")) return;
+    try {
+      const res = await axios.get(`${API_BASE}/dtr.php?action=delete_record&record_id=${recordId}`);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: res.data.message });
+        fetchRecords();
+      } else {
+        addNotification({ type: 'error', message: res.data.message || 'Failed to delete record.' });
+      }
+    } catch (err) {
+      console.error(err);
+      addNotification({ type: 'error', message: 'Network error while deleting record.' });
+    }
+  };
+
+
   const handleClockIn = async () => {
     setLoading(true);
     try {
@@ -273,21 +354,12 @@ const DtrPage = () => {
         days.push({ dateStr, dayNum: day });
       }
     } else if (dtrFilterType === 'week') {
-      const [yearStr, weekNumStr] = dtrFilterValue.split('-W');
-      if (yearStr && weekNumStr) {
-        const year = parseInt(yearStr, 10);
-        const week = parseInt(weekNumStr, 10);
-        const simple = new Date(year, 0, 1 + (week - 1) * 7);
-        const dow = simple.getDay();
-        const ISOweekStart = simple;
-        if (dow <= 4) {
-          ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-        } else {
-          ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-        }
+      const [year, month, day] = dtrFilterValue.split('-').map(Number);
+      if (year && month && day) {
+        const start = new Date(year, month - 1, day);
         for (let i = 0; i < 7; i++) {
-          const d = new Date(ISOweekStart);
-          d.setDate(ISOweekStart.getDate() + i);
+          const d = new Date(start);
+          d.setDate(start.getDate() + i);
           const y = d.getFullYear();
           const m = String(d.getMonth() + 1).padStart(2, '0');
           const dt = String(d.getDate()).padStart(2, '0');
@@ -368,23 +440,13 @@ const DtrPage = () => {
     let end = getLocalDateStr(today);
 
     if (type === 'weekly') {
-      const [yearStr, weekNumStr] = exportWeekStr.split('-W');
-      if (yearStr && weekNumStr) {
-        const year = parseInt(yearStr, 10);
-        const week = parseInt(weekNumStr, 10);
-        const simple = new Date(year, 0, 1 + (week - 1) * 7);
-        const dow = simple.getDay();
-        const ISOweekStart = new Date(simple);
-        if (dow <= 4) {
-          ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-        } else {
-          ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-        }
-        
-        start = getLocalDateStr(ISOweekStart);
-        const ISOweekEnd = new Date(ISOweekStart);
-        ISOweekEnd.setDate(ISOweekStart.getDate() + 6);
-        end = getLocalDateStr(ISOweekEnd);
+      const [year, month, day] = exportWeekStr.split('-').map(Number);
+      if (year && month && day) {
+        const startObj = new Date(year, month - 1, day);
+        start = getLocalDateStr(startObj);
+        const endObj = new Date(startObj);
+        endObj.setDate(startObj.getDate() + 6);
+        end = getLocalDateStr(endObj);
       }
     } else if (type === 'monthly') {
       const [year, month] = exportMonth.split('-').map(Number);
@@ -609,11 +671,9 @@ const DtrPage = () => {
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
                   <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
                     <label>Select Week</label>
-                    <input
-                      type="week"
-                      className="premium-input"
-                      value={exportWeekStr}
-                      onChange={e => setExportWeekStr(e.target.value)}
+                    <CustomWeekPicker 
+                      value={exportWeekStr} 
+                      onChange={val => setExportWeekStr(val)} 
                     />
                   </div>
                   <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
@@ -729,12 +789,20 @@ const DtrPage = () => {
               <div className="toolbar-label">
                 <CalendarDays size={16} /> Date
               </div>
-              <input
-                type={dtrFilterType === 'day' ? 'date' : dtrFilterType === 'week' ? 'week' : 'month'}
-                className="toolbar-input"
-                value={dtrFilterValue}
-                onChange={e => setDtrFilterValue(e.target.value)}
-              />
+              {dtrFilterType === 'week' ? (
+                <CustomWeekPicker 
+                  value={dtrFilterValue} 
+                  onChange={val => setDtrFilterValue(val)} 
+                  className="toolbar-input"
+                />
+              ) : (
+                <input
+                  type={dtrFilterType === 'day' ? 'date' : 'month'}
+                  className="toolbar-input"
+                  value={dtrFilterValue}
+                  onChange={e => setDtrFilterValue(e.target.value)}
+                />
+              )}
               <button
                 className="toolbar-today-btn"
                 onClick={handleGoToToday}
@@ -784,7 +852,7 @@ const DtrPage = () => {
                         Shift Ended ({displayTodayRecord.total_hours ? formatHoursDuration(displayTodayRecord.total_hours) : ''})
                       </span>
                     ) : (
-                      'once AM IN, count will start, PM OUT will end the time'
+                      '---'
                     )}
                   </span>
                 </div>
@@ -858,10 +926,12 @@ const DtrPage = () => {
                     <span className="stat-label">Employment Status</span>
                     <span className="stat-value status-active">Active</span>
                   </div>
-                  <div className="employee-stat-group">
-                    <span className="stat-label">Rate/Hr</span>
-                    <span className="stat-value" style={{ color: 'var(--success)' }}>${displayUser.hourly_rate || '0.00'}</span>
-                  </div>
+                  {isAdmin && (
+                    <div className="employee-stat-group">
+                      <span className="stat-label">Rate/Hr</span>
+                      <span className="stat-value" style={{ color: 'var(--success)' }}>${displayUser.hourly_rate || '0.00'}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -880,6 +950,7 @@ const DtrPage = () => {
                         {isAdmin && <th rowSpan={2} style={{ width: '100px' }}>RATE/HR</th>}
                         {isAdmin && <th rowSpan={2} style={{ width: '120px' }}>EARNINGS</th>}
                         <th rowSpan={2} style={{ width: '120px' }}>STATUS</th>
+                        {isAdmin && <th rowSpan={2} style={{ width: '100px', textAlign: 'center' }}>ACTIONS</th>}
                       </tr>
                       <tr>
                         <th style={{ minWidth: '100px', width: '120px' }}>IN</th>
@@ -905,11 +976,7 @@ const DtrPage = () => {
                                 const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
                                 const approved = dailyEvents.find(e => e.status === 'approved');
 
-                                if (pendingReschedule) {
-                                  virtualStatus = 'PENDING RESCHEDULE';
-                                } else if (pendingNew) {
-                                  virtualStatus = `PENDING ${pendingNew.event_type}`;
-                                } else if (approved) {
+                                if (approved) {
                                   if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
                                   else if (approved.event_type === 'HL') virtualStatus = 'HOLIDAY';
                                   else virtualStatus = 'SCHEDULED';
@@ -948,6 +1015,26 @@ const DtrPage = () => {
                                   <td style={{ fontWeight: 600, color: statusColor }}>
                                     {displayStatus}
                                   </td>
+                                  {isAdmin && (
+                                    <td style={{ textAlign: 'center' }}>
+                                      <div className="dtr-action-icons" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                        {row ? (
+                                          <>
+                                            <button className="btn-icon text-primary" onClick={() => openEditModal(row, dayObj, targetUserId)} title="Edit Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}>
+                                              <Edit size={16} />
+                                            </button>
+                                            <button className="btn-icon text-danger" onClick={() => handleDeleteRecord(row.id)} title="Delete Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}>
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <button onClick={() => openEditModal(null, dayObj, targetUserId)} title="Add Record" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', cursor: 'pointer', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                            <Plus size={14} /> Add
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })}
@@ -957,6 +1044,7 @@ const DtrPage = () => {
                               {isAdmin && <td></td>}
                               {isAdmin && <td style={{ color: 'var(--success)', fontWeight: 800 }}>{grandTotalEarnings > 0 ? `$${grandTotalEarnings.toFixed(2)}` : ''}</td>}
                               <td></td>
+                              {isAdmin && <td></td>}
                             </tr>
                           </>
                         );
@@ -1010,6 +1098,48 @@ const DtrPage = () => {
           </div>
         )}
       </div>
+
+      {/* Admin Edit/Add Modal */}
+      {editModal.isOpen && (
+        <div className="dtr-modal-overlay">
+          <div className="dtr-modal-content">
+            <div className="dtr-modal-header">
+              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-main)' }}>
+                {editModal.mode === 'edit' ? 'Edit Record' : 'Add Record'} - {editModal.dateStr}
+              </h3>
+              <button className="btn-icon" onClick={() => setEditModal({ ...editModal, isOpen: false })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveModal(); }}>
+              <div className="dtr-modal-body" style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div className="premium-select-group">
+                  <label>Status</label>
+                  <select className="premium-input" value={editModal.status} onChange={(e) => setEditModal({ ...editModal, status: e.target.value })}>
+                    <option value="Present">Present</option>
+                    <option value="Absent">Absent</option>
+                    <option value="Leave">Leave</option>
+                    <option value="Holiday">Holiday</option>
+                    <option value="Rescheduled">Rescheduled</option>
+                  </select>
+                </div>
+                <div className="premium-select-group">
+                  <label>AM IN Time</label>
+                  <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday'].includes(editModal.status)} />
+                </div>
+                <div className="premium-select-group">
+                  <label>PM OUT Time</label>
+                  <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday'].includes(editModal.status)} />
+                </div>
+              </div>
+              <div className="dtr-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setEditModal({ ...editModal, isOpen: false })}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Record</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

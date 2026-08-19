@@ -392,10 +392,10 @@ const ProfilePage = () => {
       {/* ── Edit Modal ── */}
       {showEditModal && (
         <div className="modal-backdrop" onClick={() => setShowEditModal(false)}>
-          <div className="edit-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
+          <div className="edit-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', padding: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header" style={{ marginBottom: '16px' }}>
               <h3>Edit Profile</h3>
-              <button className="modal-close" onClick={() => setShowEditModal(false)}>
+              <button type="button" className="modal-close" onClick={() => setShowEditModal(false)}>
                 <X size={20} />
               </button>
             </div>
@@ -403,7 +403,7 @@ const ProfilePage = () => {
             {error && <div className="modal-error">{error}</div>}
             
             <form onSubmit={handleSubmit} className="modal-form">
-              <div className="modal-avatar-section">
+              <div className="modal-avatar-section" style={{ marginBottom: '12px' }}>
                 <div className="modal-avatar-preview">
                    {previewImage ? (
                      <img src={renderProfilePicture(previewImage)} alt="Preview" />
@@ -417,43 +417,45 @@ const ProfilePage = () => {
                 </label>
               </div>
 
-              <div className="modal-field">
-                <label>Full Name</label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.full_name} 
-                  onChange={e => setFormData({...formData, full_name: e.target.value})} 
-                  required 
-                />
-              </div>
-              <div className="modal-field">
-                <label>Username</label>
-                <input 
-                  type="text" 
-                  className="input-field" 
-                  value={formData.username} 
-                  onChange={e => setFormData({...formData, username: e.target.value})} 
-                  required 
-                />
-              </div>
-              <div className="modal-field">
-                <label>Sex</label>
-                <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
-                  <option value="">Select Sex</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-              <div className="modal-field">
-                <label>New Password <span className="field-hint">(leave blank to keep current)</span></label>
-                <input 
-                  type="password" 
-                  className="input-field" 
-                  value={formData.password} 
-                  onChange={e => setFormData({...formData, password: e.target.value})} 
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="modal-field">
+                  <label>Full Name</label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    value={formData.full_name} 
+                    onChange={e => setFormData({...formData, full_name: e.target.value})} 
+                    required 
+                  />
+                </div>
+                <div className="modal-field">
+                  <label>Username</label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    value={formData.username} 
+                    onChange={e => setFormData({...formData, username: e.target.value})} 
+                    required 
+                  />
+                </div>
+                <div className="modal-field">
+                  <label>Sex</label>
+                  <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
+                    <option value="">Select Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div className="modal-field">
+                  <label>New Password <span className="field-hint">(leave blank to keep current)</span></label>
+                  <input 
+                    type="password" 
+                    className="input-field" 
+                    value={formData.password} 
+                    onChange={e => setFormData({...formData, password: e.target.value})} 
+                  />
+                </div>
               </div>
               <button type="submit" className="modal-submit-btn" disabled={loading}>
                 {loading ? (

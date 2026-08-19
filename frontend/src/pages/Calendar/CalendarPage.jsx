@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Ed
 import { useNotification } from '../../context/NotificationContext';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
+import CustomWeekPicker from '../../components/common/CustomWeekPicker';
 
 const EVENT_TYPES = ['WS', 'VL', 'HL'];
 
@@ -18,13 +19,15 @@ const CalendarPage = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showDayModal, setShowDayModal] = useState(false);
   const [selectedDateForModal, setSelectedDateForModal] = useState(null);
-  const [viewMode, setViewMode] = useState('month'); // 'month', 'week', 'list'
+  const [viewMode, setViewMode] = useState('week'); // 'month', 'week', 'list'
   const dateInputRef = useRef(null);
 
   // Request Schedule State
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
+  const [scheduleType, setScheduleType] = useState('WS');
+  const [employees, setEmployees] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user'));
   const isAdmin = user?.role === 'admin';
@@ -42,6 +45,7 @@ const CalendarPage = () => {
   const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventType, setEventType] = useState('VL');
+  const [targetUserId, setTargetUserId] = useState(user?.id || '');
   const { addNotification } = useNotification();
 
   // Holidays Management State (Admin)
@@ -52,11 +56,26 @@ const CalendarPage = () => {
   const [editingHolidayId, setEditingHolidayId] = useState(null);
   const [editHolidayName, setEditHolidayName] = useState('');
   const [editHolidayDate, setEditHolidayDate] = useState('');
+  const [editingEventId, setEditingEventId] = useState(null);
   const seededYearsRef = useRef(new Set());
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+    if (isAdmin) {
+      fetchEmployees();
+    }
+  }, [isAdmin]);
+
+  const fetchEmployees = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/employees.php?action=list`);
+      if (res.data.status === 'success') {
+        setEmployees(res.data.data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Fetch holidays when calendar year changes (auto-seed if needed)
   useEffect(() => {
@@ -194,8 +213,8 @@ const CalendarPage = () => {
     try {
       const res = await axios.get(`${API_BASE}/calendar.php?role=${user.role}&user_id=${user.id}`);
       if (res.data.status === 'success') {
-        const activeEvents = res.data.data.filter(e => e.status === 'approved');
-        setEvents(activeEvents);
+        const filteredEvents = res.data.data.filter(e => e.status !== 'rejected' && e.status !== 'pending');
+        setEvents(filteredEvents);
       }
     } catch (err) {
       console.error(err);
@@ -204,29 +223,53 @@ const CalendarPage = () => {
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
-    if (!title || !eventDate) return;
+    if (!eventDate || !title) return;
+
+    // Prevent past dates
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (eventDate < todayStr) {
+      addNotification({ type: 'warning', message: 'Cannot assign a schedule in the past.' });
+      return;
+    }
+
     setLoading(true);
     try {
-      await axios.post(`${API_BASE}/calendar.php`, {
-        user_id: user.id,
-        title,
-        description,
-        event_date: eventDate,
-        event_type: eventType,
-        status: isAdmin ? 'approved' : 'pending'
-      });
+      if (editingEventId) {
+        await axios.put(`${API_BASE}/calendar.php`, {
+          id: editingEventId,
+          action: 'edit',
+          user_id: targetUserId,
+          title,
+          description,
+          event_date: eventDate,
+          event_type: eventType,
+          status: 'approved',
+          is_admin: true
+        });
+        addNotification({ type: 'success', message: 'Event updated successfully.' });
+      } else {
+        await axios.post(`${API_BASE}/calendar.php`, {
+          user_id: isAdmin ? targetUserId : user.id,
+          title,
+          description,
+          event_date: eventDate,
+          event_type: eventType,
+          status: isAdmin ? 'approved' : 'pending'
+        });
+        addNotification({ type: 'success', message: isAdmin ? 'Event assigned successfully.' : 'Event requested successfully.' });
+      }
+      
       setTitle('');
       setDescription('');
       setEventDate('');
       setEventType('VL');
+      setTargetUserId(user.id);
+      setEditingEventId(null);
       setShowAddModal(false);
-      addNotification({
-        type: 'success',
-        message: isAdmin ? `Calendar event "${title}" created` : `Leave request "${title}" submitted for approval`
-      });
       fetchEvents();
     } catch (err) {
       console.error(err);
+      addNotification({ type: 'error', message: editingEventId ? 'Failed to update event.' : 'Failed to save event.' });
     }
     setLoading(false);
   };
@@ -234,6 +277,14 @@ const CalendarPage = () => {
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
     if (!scheduleStartDate || !scheduleEndDate) return;
+    
+    // Prevent past dates
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (scheduleStartDate < todayStr) {
+      addNotification({ type: 'warning', message: 'Cannot request a schedule in the past.' });
+      return;
+    }
+
     setLoading(true);
 
     let currentDateObj = new Date(scheduleStartDate);
@@ -251,10 +302,10 @@ const CalendarPage = () => {
       try {
         await axios.post(`${API_BASE}/calendar.php`, {
           user_id: user.id,
-          title: 'Work Shift',
-          description: 'Requested working schedule',
+          title: scheduleType === 'WS' ? 'Work Shift' : 'Vacation Leave',
+          description: scheduleType === 'WS' ? 'Requested working schedule' : 'Requested vacation leave',
           event_date: dateStr,
-          event_type: 'WS',
+          event_type: scheduleType,
           status: 'pending'
         });
         createdCount++;
@@ -299,6 +350,14 @@ const CalendarPage = () => {
   const handleRescheduleSubmit = async (e) => {
     e.preventDefault();
     if (!newRescheduleDate) return;
+
+    // Prevent past dates
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (newRescheduleDate < todayStr) {
+      addNotification({ type: 'warning', message: 'Cannot reschedule to a past date.' });
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await axios.put(`${API_BASE}/calendar.php`, {
@@ -354,7 +413,9 @@ const CalendarPage = () => {
        return `${currentDate.toLocaleString('default', { month: 'long' })} ${currentDate.getFullYear()}`;
     } else if (viewMode === 'week') {
        const start = new Date(currentDate);
-       start.setDate(start.getDate() - start.getDay());
+       const day = start.getDay();
+       const diff = (day + 7 - 4) % 7;
+       start.setDate(start.getDate() - diff);
        const end = new Date(start);
        end.setDate(end.getDate() + 6);
        
@@ -373,12 +434,14 @@ const CalendarPage = () => {
   };
   
   const getWeekStr = (d) => {
-    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-    const dayNum = date.getUTCDay() || 7;
-    date.setUTCDate(date.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
-    return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day + 7 - 4) % 7;
+    date.setDate(date.getDate() - diff);
+    const yStr = date.getFullYear();
+    const mStr = String(date.getMonth() + 1).padStart(2, '0');
+    const dStr = String(date.getDate()).padStart(2, '0');
+    return `${yStr}-${mStr}-${dStr}`;
   };
 
   const handleDateFilterChange = (e) => {
@@ -388,22 +451,13 @@ const CalendarPage = () => {
     if (viewMode === 'month' || viewMode === 'list') {
       const [y, m] = val.split('-');
       setCurrentDate(new Date(parseInt(y), parseInt(m) - 1, 1));
-    } else if (viewMode === 'week') {
-      const [yearStr, weekNumStr] = val.split('-W');
-      if (yearStr && weekNumStr) {
-        const year = parseInt(yearStr, 10);
-        const week = parseInt(weekNumStr, 10);
-        const simple = new Date(year, 0, 1 + (week - 1) * 7);
-        const dow = simple.getDay();
-        const ISOweekStart = simple;
-        if (dow <= 4) {
-          ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-        } else {
-          ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
-        }
-        setCurrentDate(ISOweekStart);
-      }
     }
+  };
+
+  const handleWeekPickerChange = (val) => {
+    if (!val) return;
+    const [y, m, d] = val.split('-').map(Number);
+    setCurrentDate(new Date(y, m - 1, d));
   };
 
   // Calendar Grid Logic (Month)
@@ -446,8 +500,9 @@ const CalendarPage = () => {
   const getWeekDays = (baseDate) => {
     const date = new Date(baseDate);
     const day = date.getDay();
-    const diff = date.getDate() - day;
-    const startOfWeek = new Date(date.setDate(diff));
+    const diff = (day + 7 - 4) % 7;
+    const startOfWeek = new Date(date);
+    startOfWeek.setDate(date.getDate() - diff);
     const days = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(startOfWeek);
@@ -517,6 +572,26 @@ const CalendarPage = () => {
     if (isAdmin && evt.status === 'pending') {
       setSelectedEvent(evt);
       setShowApproveModal(true);
+    } else if (isAdmin && evt.event_type !== 'holiday' && !evt._isHoliday) {
+      // Admin editing an approved/existing event
+      setEditingEventId(evt.id);
+      setTitle(evt.title);
+      setDescription(evt.description || '');
+      setEventDate(evt.event_date.split(' ')[0]);
+      setEventType(evt.event_type);
+      setTargetUserId(evt.user_id);
+      setShowAddModal(true);
+    } else if (!isAdmin) {
+      if (String(evt.user_id) === String(user.id)) {
+        setRescheduleData(evt);
+        setNewRescheduleDate(evt.event_date);
+        setShowRescheduleModal(true);
+      } else {
+        addNotification({
+          type: 'warning',
+          message: 'You can only edit or view details of your own schedule.'
+        });
+      }
     }
   };
 
@@ -531,6 +606,7 @@ const CalendarPage = () => {
   // Helper: render event display text
   const getEventText = (evt) => {
     if (evt.event_type === 'WS' || evt.title === 'Work Shift') return `WS - ${evt.user_name}`;
+    if (['VL', 'SL', 'PDO'].includes(evt.event_type)) return `${evt.event_type} - ${evt.user_name}`;
     return `${evt.event_type === 'Other' ? '' : evt.event_type + ' - '}${evt.user_name} (${evt.title})`;
   };
 
@@ -569,32 +645,40 @@ const CalendarPage = () => {
           
           <div className="date-navigation" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button onClick={prevPeriod} className="nav-arrow-btn"><ChevronLeft size={16} /></button>
-            <div 
-              style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minWidth: '160px', cursor: 'pointer' }}
-              onClick={() => {
-                if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
-                  dateInputRef.current.showPicker();
-                }
-              }}
-            >
-              <h2 className="current-date-text" style={{ fontSize: '1.1rem', margin: 0, textAlign: 'center' }}>{getDateDisplay()}</h2>
-              <input 
-                ref={dateInputRef}
-                type={viewMode === 'week' ? 'week' : 'month'}
-                value={viewMode === 'week' ? getWeekStr(currentDate) : getMonthStr(currentDate)}
-                onChange={handleDateFilterChange}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0,
-                  cursor: 'pointer'
-                }}
-                title="Select date"
+            {viewMode === 'week' ? (
+              <CustomWeekPicker 
+                value={getWeekStr(currentDate)}
+                onChange={handleWeekPickerChange}
+                className="calendar-week-picker"
               />
-            </div>
+            ) : (
+              <div 
+                style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minWidth: '160px', cursor: 'pointer' }}
+                onClick={() => {
+                  if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
+                    dateInputRef.current.showPicker();
+                  }
+                }}
+              >
+                <h2 className="current-date-text" style={{ fontSize: '1.1rem', margin: 0, textAlign: 'center' }}>{getDateDisplay()}</h2>
+                <input 
+                  ref={dateInputRef}
+                  type="month"
+                  value={getMonthStr(currentDate)}
+                  onChange={handleDateFilterChange}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: 'pointer'
+                  }}
+                  title="Select date"
+                />
+              </div>
+            )}
             <button onClick={nextPeriod} className="nav-arrow-btn"><ChevronRight size={16} /></button>
             <button onClick={today} className="today-btn">Today</button>
           </div>
@@ -691,10 +775,10 @@ const CalendarPage = () => {
           </div>
         )}
 
-        {viewMode === 'week' && (
+        {viewMode === 'week' && !isAdmin && (
           <div className="calendar-grid-container glass week-view">
             <div className="calendar-days-header">
-              <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+              <div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div>
             </div>
             <div className="calendar-grid week-grid">
               {weekCells.map((cell, idx) => {
@@ -742,6 +826,91 @@ const CalendarPage = () => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'week' && isAdmin && (
+          <div className="admin-week-grid-container glass">
+            <div className="table-responsive">
+              <table className="admin-week-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '220px', textAlign: 'left', paddingLeft: '16px' }}>EMPLOYEE</th>
+                    {weekCells.map((cell, idx) => {
+                      const isToday = new Date().toDateString() === cell.date.toDateString();
+                      return (
+                        <th key={idx} className={isToday ? 'today-col' : ''}>
+                          <div style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                            {cell.date.toLocaleString('default', { weekday: 'short' })}
+                          </div>
+                          <div style={{ fontSize: '1rem', fontWeight: 700, color: isToday ? 'var(--primary)' : 'var(--text-main)', marginTop: '2px' }}>
+                            {cell.date.getDate()}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="holidays-row">
+                     <td style={{ textAlign: 'left', paddingLeft: '16px', fontWeight: 600, color: 'var(--primary)' }}>Holidays / Global</td>
+                     {weekCells.map((cell, idx) => {
+                       const dayHolidays = getHolidaysForDate(cell.date);
+                       const isToday = new Date().toDateString() === cell.date.toDateString();
+                       return (
+                         <td key={idx} className={`admin-week-cell ${isToday ? 'today-cell' : ''}`}>
+                            <div className="admin-cell-events">
+                              {dayHolidays.map(h => (
+                                 <div key={h.id} className="event-badge event-type-holiday" style={{ margin: '2px 0', fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex' }}>
+                                   <span className="event-icon" style={{ fontSize: '10px' }}>🎄</span>
+                                   <span className="event-text">{h.name}</span>
+                                 </div>
+                              ))}
+                            </div>
+                         </td>
+                       );
+                     })}
+                  </tr>
+                  {employees.map(emp => (
+                    <tr key={emp.id} className="employee-row">
+                      <td style={{ textAlign: 'left', paddingLeft: '16px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{emp.full_name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.employee_id || emp.id}</div>
+                      </td>
+                      {weekCells.map((cell, idx) => {
+                        const dayEvents = events.filter(e => {
+                          if (!e.event_date) return false;
+                          const dateMatch = e.event_date.split(' ')[0] === cell.date.toISOString().split('T')[0];
+                          return dateMatch && String(e.user_id) === String(emp.id);
+                        });
+                        const isToday = new Date().toDateString() === cell.date.toDateString();
+                        return (
+                          <td key={idx} className={`admin-week-cell ${isToday ? 'today-cell' : ''}`} onClick={() => { setSelectedDateForModal(cell.date); setShowDayModal(true); }}>
+                            <div className="admin-cell-events">
+                              {dayEvents.map(item => {
+                                const Icon = getEventIcon(item);
+                                return (
+                                  <div
+                                    key={item.id}
+                                    className={`event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                                    onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
+                                    title={`${item.title} (${item.status})`}
+                                    style={{ margin: '2px 0', fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex' }}
+                                  >
+                                    {Icon && <span className="event-icon" style={{ fontSize: '10px' }}>{Icon}</span>}
+                                    <span className="event-text">{item.event_type === 'WS' ? 'WS' : item.event_type}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
@@ -963,36 +1132,61 @@ const CalendarPage = () => {
         </div>
       )}
 
-      {/* Add/Request Event Modal */}
+      {/* Add/Request/Edit Event Modal */}
       {showAddModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3>{isAdmin ? 'Create Event' : 'Request Date'}</h3>
-              <button className="close-btn" onClick={() => setShowAddModal(false)}><X size={20} /></button>
+          <div className="clean-modal-content">
+            <div className="clean-modal-header">
+              <h3>{isAdmin ? (editingEventId ? 'Edit Event' : 'New Event') : 'Request Date'}</h3>
+              <button className="clean-close-btn" onClick={() => { setShowAddModal(false); setEditingEventId(null); }}><X size={20} /></button>
             </div>
-            <form onSubmit={handleAddEvent} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div className="input-group">
-                <label>Event Type</label>
-                <select className="input-field" value={eventType} onChange={e => setEventType(e.target.value)}>
-                  {EVENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                </select>
+            <form onSubmit={handleAddEvent}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
+                <div className="input-group">
+                  <label>Event Title</label>
+                  <input type="text" placeholder="Add title" value={title} onChange={e => setTitle(e.target.value)} required style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
+                </div>
+                {isAdmin && (
+                  <div className="input-group">
+                    <label>Employee</label>
+                    <select value={targetUserId} onChange={e => setTargetUserId(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}>
+                      <option value={user.id}>Me ({user.full_name || 'Admin'})</option>
+                      {employees.filter(emp => String(emp.id) !== String(user.id)).map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="date-range-container">
+                  <div className="input-group" style={{ flex: 1 }}>
+                    <label>Date</label>
+                    <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} min={new Date().toISOString().split('T')[0]} max="9999-12-31" required style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
+                  </div>
+                  <div className="input-group" style={{ flex: 1 }}>
+                    <label>Category</label>
+                    <select value={eventType} onChange={e => setEventType(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}>
+                      {EVENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="input-group">
+                  <label>Description (Optional)</label>
+                  <textarea placeholder="Add description" value={description} onChange={e => setDescription(e.target.value)} rows="3" style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
+                </div>
               </div>
-              <div className="input-group">
-                <label>Title</label>
-                <input type="text" className="input-field" value={title} onChange={e => setTitle(e.target.value)} required />
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {eventDate && eventDate < new Date().toISOString().split('T')[0] && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                    ⚠️ Cannot schedule events in the past.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => { setShowAddModal(false); setEditingEventId(null); }}>Cancel</button>
+                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || (eventDate && eventDate < new Date().toISOString().split('T')[0])}>
+                    {isAdmin ? (editingEventId ? 'Update Event' : 'Save Event') : 'Submit'}
+                  </button>
+                </div>
               </div>
-              <div className="input-group">
-                <label>Date</label>
-                <input type="date" className="input-field" value={eventDate} onChange={e => setEventDate(e.target.value)} max="9999-12-31" required />
-              </div>
-              <div className="input-group">
-                <label>Description (Optional)</label>
-                <textarea className="input-field" value={description} onChange={e => setDescription(e.target.value)} rows="3" />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                {isAdmin ? 'Save Event' : 'Submit for Approval'}
-              </button>
             </form>
           </div>
         </div>
@@ -1001,21 +1195,21 @@ const CalendarPage = () => {
       {/* Approve/Reject Modal */}
       {showApproveModal && selectedEvent && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="schedule-modal-content">
             <div className="modal-header">
               <h3>Review Request</h3>
               <button className="close-btn" onClick={() => setShowApproveModal(false)}><X size={20} /></button>
             </div>
-            <div style={{ marginBottom: '20px' }}>
-              <p><strong>Requested By:</strong> {selectedEvent.user_name}</p>
-              <p><strong>Type:</strong> {selectedEvent.event_type}</p>
-              <p><strong>Date:</strong> {selectedEvent.event_date}</p>
-              <p><strong>Title:</strong> {selectedEvent.title}</p>
-              {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '10px 0', fontSize: '0.95rem' }}>
+              <p style={{ margin: 0 }}><strong>Requested By:</strong> {selectedEvent.user_name}</p>
+              <p style={{ margin: 0 }}><strong>Type:</strong> {selectedEvent.event_type}</p>
+              <p style={{ margin: 0 }}><strong>Date:</strong> {selectedEvent.event_date}</p>
+              <p style={{ margin: 0 }}><strong>Title:</strong> {selectedEvent.title}</p>
+              {selectedEvent.description && <p style={{ margin: 0 }}><strong>Description:</strong> {selectedEvent.description}</p>}
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button className="btn btn-success" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleUpdateStatus('approved')}>Approve</button>
-              <button className="btn btn-danger" style={{ flex: 1, justifyContent: 'center' }} onClick={() => handleUpdateStatus('rejected')}>Reject</button>
+            <div style={{ marginTop: '20px', display: 'flex', gap: '12px' }}>
+              <button className="schedule-submit-btn" style={{ flex: 1, margin: 0, background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)' }} onClick={() => handleUpdateStatus('rejected')}>Reject</button>
+              <button className="schedule-submit-btn" style={{ flex: 1, margin: 0, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)' }} onClick={() => handleUpdateStatus('approved')}>Approve</button>
             </div>
           </div>
         </div>
@@ -1138,31 +1332,58 @@ const CalendarPage = () => {
               <h3>Request Schedule</h3>
               <button className="close-btn" onClick={() => setShowScheduleModal(false)}><X size={20} /></button>
             </div>
-            <form onSubmit={handleScheduleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div className="input-group">
-                <label>Schedule Type</label>
-                <input
-                  type="text"
-                  className="input-field fixed-input"
-                  value="Work Shift"
-                  readOnly
-                />
-              </div>
-              <div className="date-range-container">
-                <div className="input-group" style={{ flex: 1 }}>
-                  <label>Start Date</label>
-                  <input type="date" className="input-field" value={scheduleStartDate} onChange={e => setScheduleStartDate(e.target.value)} max="9999-12-31" required />
+            <form onSubmit={handleScheduleSubmit}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
+                <div className="input-group">
+                  <label>Schedule Type</label>
+                  <select
+                    value={scheduleType}
+                    onChange={(e) => setScheduleType(e.target.value)}
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
+                  >
+                    <option value="WS">Work Shift</option>
+                    <option value="VL">Vacation Leave</option>
+                  </select>
                 </div>
-                <div className="date-separator">to</div>
-                <div className="input-group" style={{ flex: 1 }}>
-                  <label>End Date</label>
-                  <input type="date" className="input-field" value={scheduleEndDate} onChange={e => setScheduleEndDate(e.target.value)} max="9999-12-31" required />
+                <div className="date-range-container">
+                  <div className="input-group" style={{ flex: 1 }}>
+                    <label>Start Date</label>
+                    <input
+                      type="date"
+                      value={scheduleStartDate}
+                      onChange={(e) => setScheduleStartDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      max="9999-12-31"
+                      required
+                      style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }}
+                    />
+                  </div>
+                  <div className="date-separator">to</div>
+                  <div className="input-group" style={{ flex: 1 }}>
+                    <label>End Date</label>
+                    <input
+                      type="date"
+                      value={scheduleEndDate}
+                      onChange={(e) => setScheduleEndDate(e.target.value)}
+                      min={scheduleStartDate || new Date().toISOString().split('T')[0]}
+                      max="9999-12-31"
+                      required
+                      style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }}
+                    />
+                  </div>
                 </div>
               </div>
-
-              <button type="submit" className="btn btn-primary schedule-submit-btn" disabled={loading}>
-                Submit Schedule Request
-              </button>
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {(scheduleStartDate < new Date().toISOString().split('T')[0] || scheduleEndDate < new Date().toISOString().split('T')[0]) && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                    ⚠️ Past dates cannot be requested.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => setShowScheduleModal(false)}>Cancel</button>
+                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || scheduleStartDate < new Date().toISOString().split('T')[0] || scheduleEndDate < new Date().toISOString().split('T')[0]}>Submit</button>
+                </div>
+              </div>
             </form>
           </div>
         </div>
@@ -1171,26 +1392,37 @@ const CalendarPage = () => {
       {/* Reschedule Modal */}
       {showRescheduleModal && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="schedule-modal-content">
             <div className="modal-header">
               <h3>Reschedule Request</h3>
               <button className="close-btn" onClick={() => setShowRescheduleModal(false)}><X size={20} /></button>
             </div>
-            <form onSubmit={handleRescheduleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div className="input-group">
-                <label>New Date</label>
-                <input
-                  type="date"
-                  className="input-field"
-                  value={newRescheduleDate}
-                  onChange={e => setNewRescheduleDate(e.target.value)}
-                  max="9999-12-31"
-                  required
-                />
+            <form onSubmit={handleRescheduleSubmit}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
+                <div className="input-group">
+                  <label>New Date</label>
+                  <input
+                    type="date"
+                    value={newRescheduleDate}
+                    onChange={e => setNewRescheduleDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    max="9999-12-31"
+                    required
+                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)', width: '100%', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
-              <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center' }}>
-                Submit Reschedule
-              </button>
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {newRescheduleDate && newRescheduleDate < new Date().toISOString().split('T')[0] && (
+                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                    ⚠️ Cannot reschedule to a past date.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => setShowRescheduleModal(false)}>Cancel</button>
+                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || (newRescheduleDate && newRescheduleDate < new Date().toISOString().split('T')[0])}>Submit</button>
+                </div>
+              </div>
             </form>
           </div>
         </div>
