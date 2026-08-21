@@ -460,6 +460,11 @@ input[type="month"].input-field {
   min-width: 250px;
 }
 
+.toast-message.border-success { border-color: var(--success); }
+.toast-message.border-error { border-color: var(--danger); }
+.toast-message.border-warning { border-color: var(--warning); }
+.toast-message.border-info { border-color: var(--primary); }
+
 .toast-icon {
   display: flex;
   align-items: center;
@@ -472,6 +477,11 @@ input[type="month"].input-field {
   font-size: 0.8rem;
   font-weight: bold;
 }
+
+.toast-icon.bg-success { background: var(--success); }
+.toast-icon.bg-error { background: var(--danger); }
+.toast-icon.bg-warning { background: var(--warning); }
+.toast-icon.bg-info { background: var(--primary); }
 
 .toast-content {
   flex: 1;

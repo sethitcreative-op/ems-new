@@ -113,6 +113,12 @@ if ($action === 'clock_in') {
         if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
             $am_in_seconds = strtotime($am_in);
             $pm_out_seconds = strtotime($pm_out);
+            
+            if ($pm_out_seconds < $am_in_seconds) {
+                $pm_out = date('Y-m-d H:i:s', $pm_out_seconds + 86400);
+                $pm_out_seconds += 86400;
+            }
+
             $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
             $total_hours = round($diff_seconds / 3600, 2);
             $earnings = round($total_hours * $record['hourly_rate'], 2);
@@ -157,6 +163,12 @@ if ($action === 'clock_in') {
         if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
             $am_in_seconds = strtotime($am_in);
             $pm_out_seconds = strtotime($pm_out);
+            
+            if ($pm_out_seconds < $am_in_seconds) {
+                $pm_out = date('Y-m-d H:i:s', $pm_out_seconds + 86400);
+                $pm_out_seconds += 86400;
+            }
+
             $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
             $total_hours = round($diff_seconds / 3600, 2);
             $earnings = round($total_hours * $user['hourly_rate'], 2);

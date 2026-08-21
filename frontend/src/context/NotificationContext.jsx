@@ -31,10 +31,10 @@ export const NotificationProvider = ({ children }) => {
 
     const id = Date.now() + Math.random();
     const newNotification = {
-      id,
       timestamp: new Date(),
       read: false,
       ...notification,
+      id, // ensure id is not overwritten
     };
     
     // Add to local state for immediate feedback
@@ -104,35 +104,33 @@ export const NotificationProvider = ({ children }) => {
         const data = await res.json();
         
         if (data.status === 'success') {
-          setNotifications(prev => {
-            const newNotifs = data.data;
-            const newUnread = newNotifs.filter(n => parseInt(n.is_read) === 0);
-            
-            // Check for new unread notifications to show toasts only after initial load
-            if (initialLoadDone.current) {
-              newUnread.forEach(n => {
-                if (!seenNotificationIds.current.has(n.id)) {
-                  // It's a brand new unread notification
-                  const toastId = `db-${n.id}`;
-                  setToasts(t => {
-                    if (t.some(existingToast => existingToast.message === n.message)) {
-                      return t;
-                    }
-                    return [...t, { ...n, id: toastId, timestamp: n.created_at }];
-                  });
-                  setTimeout(() => removeToast(toastId), 4000);
-                  seenNotificationIds.current.add(n.id);
-                }
-              });
-            } else {
-              // Initial load, just mark all as seen so we don't toast them later
-              newNotifs.forEach(n => seenNotificationIds.current.add(n.id));
-              initialLoadDone.current = true;
-            }
-            
-            setUnreadCount(newUnread.length);
-            return newNotifs;
-          });
+          const newNotifs = data.data;
+          const newUnread = newNotifs.filter(n => parseInt(n.is_read) === 0);
+          
+          // Check for new unread notifications to show toasts only after initial load
+          if (initialLoadDone.current) {
+            newUnread.forEach(n => {
+              if (!seenNotificationIds.current.has(n.id)) {
+                // It's a brand new unread notification
+                const toastId = `db-${n.id}`;
+                setToasts(t => {
+                  if (t.some(existingToast => existingToast.message === n.message)) {
+                    return t;
+                  }
+                  return [...t, { ...n, timestamp: n.created_at, id: toastId }];
+                });
+                setTimeout(() => removeToast(toastId), 4000);
+                seenNotificationIds.current.add(n.id);
+              }
+            });
+          } else {
+            // Initial load, just mark all as seen so we don't toast them later
+            newNotifs.forEach(n => seenNotificationIds.current.add(n.id));
+            initialLoadDone.current = true;
+          }
+          
+          setNotifications(newNotifs);
+          setUnreadCount(newUnread.length);
         }
       } catch (error) {
         console.error("Failed to fetch notifications", error);
@@ -167,8 +165,10 @@ export const NotificationProvider = ({ children }) => {
       {toasts.length > 0 && (
         <div className="toast-container">
           {toasts.map(toast => (
-            <div key={`toast-${toast.id}`} className="toast-message glass">
-              <div className="toast-icon">✓</div>
+            <div key={`toast-${toast.id}`} className={`toast-message glass border-${toast.type || 'success'}`}>
+              <div className={`toast-icon bg-${toast.type || 'success'}`}>
+                {toast.type === 'error' ? '✕' : toast.type === 'warning' ? '!' : '✓'}
+              </div>
               <div className="toast-content">
                 {toast.message}
               </div>
