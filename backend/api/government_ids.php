@@ -56,7 +56,9 @@ elseif ($method === 'POST') {
     // Determine upload directory based on environment (local vs production)
     $localDir = __DIR__ . '/../../frontend/public/img/gov_ids/';
     $prodDir = __DIR__ . '/../../img/gov_ids/';
-    $uploadDir = is_dir(__DIR__ . '/../../frontend') ? $localDir : $prodDir;
+    
+    $isLocal = ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false || strpos($_SERVER['HTTP_HOST'], '192.168.') !== false);
+    $uploadDir = $isLocal ? $localDir : $prodDir;
     
     // Ensure directory exists
     if (!file_exists($uploadDir)) {
@@ -113,7 +115,9 @@ elseif ($method === 'DELETE') {
         if (strpos($record['file_path'], 'img/') === 0) {
             $localPath = __DIR__ . '/../../frontend/public/' . $record['file_path'];
             $prodPath = __DIR__ . '/../../' . $record['file_path'];
-            $fullPath = is_dir(__DIR__ . '/../../frontend') ? $localPath : $prodPath;
+            
+            $isLocal = ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false || strpos($_SERVER['HTTP_HOST'], '192.168.') !== false);
+            $fullPath = $isLocal ? $localPath : $prodPath;
         } else {
             $fullPath = __DIR__ . '/../' . $record['file_path'];
         }

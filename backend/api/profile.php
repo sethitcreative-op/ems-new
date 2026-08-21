@@ -10,7 +10,8 @@ function uploadProfilePicture($file) {
     // Determine upload directory based on environment (local vs production)
     $localDir = "../../frontend/public/img/profiles/";
     $prodDir = "../../img/profiles/";
-    $target_dir = is_dir("../../frontend") ? $localDir : $prodDir;
+    $isLocal = ($_SERVER['HTTP_HOST'] === 'localhost' || strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false || strpos($_SERVER['HTTP_HOST'], '192.168.') !== false);
+    $target_dir = $isLocal ? $localDir : $prodDir;
     if (!file_exists($target_dir)) {
         mkdir($target_dir, 0777, true);
     }
