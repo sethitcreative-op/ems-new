@@ -30,8 +30,11 @@ CREATE TABLE IF NOT EXISTS events (
     title VARCHAR(100) NOT NULL,
     description TEXT,
     event_date DATE NOT NULL,
-    event_type ENUM('VL', 'SL', 'PDO', 'Birthday', 'Meeting', 'Holiday', 'Other') DEFAULT 'Other',
+    event_type VARCHAR(50) DEFAULT 'Other',
+    schedule_option VARCHAR(100) DEFAULT NULL,
     status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    approved_by_name VARCHAR(100) DEFAULT NULL,
+    reschedule_for_event_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

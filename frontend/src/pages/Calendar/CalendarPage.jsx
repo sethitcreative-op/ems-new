@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Edit2, Trash2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Edit2, Trash2, RefreshCw, User, Tag, AlignLeft, Info, Save, Briefcase } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
@@ -22,11 +22,17 @@ const CalendarPage = () => {
   const [viewMode, setViewMode] = useState('week'); // 'month', 'week', 'list'
   const dateInputRef = useRef(null);
 
+  // Legend State
+  const [showLegend, setShowLegend] = useState(false);
+
   // Request Schedule State
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleEndDate, setScheduleEndDate] = useState('');
   const [scheduleType, setScheduleType] = useState('WS');
+  const [scheduleDateMode, setScheduleDateMode] = useState('range'); // 'range' | 'pick'
+  const [selectedDates, setSelectedDates] = useState([]); // for 'pick' mode
+  const [miniCalMonth, setMiniCalMonth] = useState(new Date());
   const [employees, setEmployees] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user'));
@@ -39,13 +45,25 @@ const CalendarPage = () => {
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleData, setRescheduleData] = useState(null);
   const [newRescheduleDate, setNewRescheduleDate] = useState('');
+  const [rescheduleMode, setRescheduleMode] = useState('reschedule');
+  const [rescheduleTitle, setRescheduleTitle] = useState('');
+  const [rescheduleDesc, setRescheduleDesc] = useState('');
+  const [rescheduleType, setRescheduleType] = useState('WS');
+  const [rescheduleOption, setRescheduleOption] = useState('');
+
+  const [showOwnScheduleModal, setShowOwnScheduleModal] = useState(false);
+  const [ownScheduleData, setOwnScheduleData] = useState(null);
 
   // Add Event Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [eventDate, setEventDate] = useState('');
   const [eventType, setEventType] = useState('VL');
+  const [scheduleOption, setScheduleOption] = useState('');
   const [targetUserId, setTargetUserId] = useState(user?.id || '');
+  const [adminDateMode, setAdminDateMode] = useState('single'); // 'single' | 'pick'
+  const [adminSelectedDates, setAdminSelectedDates] = useState([]);
+  const [adminMiniCalMonth, setAdminMiniCalMonth] = useState(new Date());
   const { addNotification } = useNotification();
 
   // Holidays Management State (Admin)
@@ -93,6 +111,10 @@ const CalendarPage = () => {
       setRescheduleData(location.state.requestData);
       setNewRescheduleDate(location.state.requestData.event_date);
       setShowRescheduleModal(true);
+      // Clear the state so it doesn't reopen on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.openRequestModal) {
+      setShowScheduleModal(true);
       // Clear the state so it doesn't reopen on refresh
       navigate(location.pathname, { replace: true, state: {} });
     }
@@ -223,111 +245,185 @@ const CalendarPage = () => {
 
   const handleAddEvent = async (e) => {
     e.preventDefault();
-    if (!eventDate || !title) return;
 
-    // Prevent past dates
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (eventDate < todayStr) {
-      addNotification({ type: 'warning', message: 'Cannot assign a schedule in the past.' });
-      return;
-    }
+    const computedTitle = eventType === 'WS' ? 'Work Schedule' : eventType === 'VL' ? 'Vacation Leave' : eventType;
+    const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
-    setLoading(true);
-    try {
-      if (editingEventId) {
-        await axios.put(`${API_BASE}/calendar.php`, {
-          id: editingEventId,
-          action: 'edit',
-          user_id: targetUserId,
-          title,
-          description,
-          event_date: eventDate,
-          event_type: eventType,
-          status: 'approved',
-          is_admin: true
-        });
-        addNotification({ type: 'success', message: 'Event updated successfully.' });
-      } else {
-        await axios.post(`${API_BASE}/calendar.php`, {
-          user_id: isAdmin ? targetUserId : user.id,
-          title,
-          description,
-          event_date: eventDate,
-          event_type: eventType,
-          status: isAdmin ? 'approved' : 'pending'
-        });
-        addNotification({ type: 'success', message: isAdmin ? 'Event assigned successfully.' : 'Event requested successfully.' });
+    if (adminDateMode === 'single' || editingEventId) {
+      // --- Single date / edit mode ---
+      if (!eventDate) return;
+      if (eventDate < todayStr) {
+        addNotification({ type: 'warning', message: 'Cannot assign a schedule in outdated date.' });
+        return;
       }
-      
+      setLoading(true);
+      try {
+        if (editingEventId) {
+          await axios.put(`${API_BASE}/calendar.php`, {
+            id: editingEventId,
+            action: 'edit',
+            user_id: targetUserId,
+            title: computedTitle,
+            description,
+            event_date: eventDate,
+            event_type: eventType,
+            schedule_option: scheduleOption,
+            status: 'approved',
+            is_admin: true
+          });
+          addNotification({ type: 'success', message: 'Event updated successfully.' });
+        } else {
+          await axios.post(`${API_BASE}/calendar.php`, {
+            user_id: isAdmin ? targetUserId : user.id,
+            title: computedTitle,
+            description,
+            event_date: eventDate,
+            event_type: eventType,
+            schedule_option: scheduleOption,
+            status: isAdmin ? 'approved' : 'pending'
+          });
+          addNotification({ type: 'success', message: isAdmin ? 'Event assigned successfully.' : 'Event requested successfully.' });
+        }
+        setTitle('');
+        setDescription('');
+        setEventDate('');
+        setEventType('VL');
+        setScheduleOption('');
+        setTargetUserId(user.id);
+        setEditingEventId(null);
+        setAdminSelectedDates([]);
+        setShowAddModal(false);
+        fetchEvents();
+      } catch (err) {
+        console.error(err);
+        addNotification({ type: 'error', message: editingEventId ? 'Failed to update event.' : 'Failed to save event.' });
+      }
+      setLoading(false);
+    } else {
+      // --- Multi-date pick mode ---
+      if (adminSelectedDates.length === 0) {
+        addNotification({ type: 'warning', message: 'Please select at least one date.' });
+        return;
+      }
+      const pastDates = adminSelectedDates.filter(d => d < todayStr);
+      if (pastDates.length > 0) {
+        addNotification({ type: 'warning', message: 'Cannot request a schedule in outdated date.' });
+        return;
+      }
+      setLoading(true);
+      let createdCount = 0;
+      for (const dateStr of adminSelectedDates) {
+        try {
+          await axios.post(`${API_BASE}/calendar.php`, {
+            user_id: isAdmin ? targetUserId : user.id,
+            title: computedTitle,
+            description,
+            event_date: dateStr,
+            event_type: eventType,
+            schedule_option: scheduleOption,
+            status: isAdmin ? 'approved' : 'pending'
+          });
+          createdCount++;
+        } catch (err) {
+          console.error('Failed to create event for', dateStr, err);
+        }
+      }
+      setLoading(false);
       setTitle('');
       setDescription('');
       setEventDate('');
       setEventType('VL');
+      setScheduleOption('');
       setTargetUserId(user.id);
-      setEditingEventId(null);
+      setAdminSelectedDates([]);
       setShowAddModal(false);
-      fetchEvents();
-    } catch (err) {
-      console.error(err);
-      addNotification({ type: 'error', message: editingEventId ? 'Failed to update event.' : 'Failed to save event.' });
+      if (createdCount > 0) {
+        addNotification({ type: 'success', message: `${createdCount} event${createdCount > 1 ? 's' : ''} ${isAdmin ? 'assigned' : 'requested'} successfully.` });
+        fetchEvents();
+      } else {
+        addNotification({ type: 'error', message: 'Failed to save events.' });
+      }
     }
-    setLoading(false);
   };
 
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
-    if (!scheduleStartDate || !scheduleEndDate) return;
-    
-    // Prevent past dates
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (scheduleStartDate < todayStr) {
-      addNotification({ type: 'warning', message: 'Cannot request a schedule in the past.' });
+
+    const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+    // Build list of dates to submit
+    let datesToSubmit = [];
+
+    if (scheduleDateMode === 'range') {
+      if (!scheduleStartDate || !scheduleEndDate) return;
+      if (scheduleStartDate < todayStr) {
+        addNotification({ type: 'warning', message: 'Cannot request a schedule in outdated date.' });
+        return;
+      }
+      let currentDateObj = new Date(scheduleStartDate + 'T00:00:00');
+      const endDateObj = new Date(scheduleEndDate + 'T00:00:00');
+      while (currentDateObj <= endDateObj) {
+        const yyyy = currentDateObj.getFullYear();
+        const mm = String(currentDateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(currentDateObj.getDate()).padStart(2, '0');
+        datesToSubmit.push(`${yyyy}-${mm}-${dd}`);
+        currentDateObj.setDate(currentDateObj.getDate() + 1);
+      }
+    } else {
+      // 'pick' mode
+      if (selectedDates.length === 0) {
+        addNotification({ type: 'warning', message: 'Please select at least one date.' });
+        return;
+      }
+      const pastDates = selectedDates.filter(d => d < todayStr);
+      if (pastDates.length > 0) {
+        addNotification({ type: 'warning', message: 'Cannot request a schedule in outdated date.' });
+        return;
+      }
+      datesToSubmit = [...selectedDates];
+    }
+
+    if (datesToSubmit.length === 0) {
+      addNotification({ type: 'warning', message: 'Invalid date selection.' });
       return;
     }
 
     setLoading(true);
-
-    let currentDateObj = new Date(scheduleStartDate);
-    const endDateObj = new Date(scheduleEndDate);
-
     let createdCount = 0;
 
-    while (currentDateObj <= endDateObj) {
-      // Format date to YYYY-MM-DD
-      const yyyy = currentDateObj.getFullYear();
-      const mm = String(currentDateObj.getMonth() + 1).padStart(2, '0');
-      const dd = String(currentDateObj.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-
+    for (const dateStr of datesToSubmit) {
       try {
         await axios.post(`${API_BASE}/calendar.php`, {
           user_id: user.id,
           title: scheduleType === 'WS' ? 'Work Shift' : 'Vacation Leave',
-          description: scheduleType === 'WS' ? 'Requested working schedule' : 'Requested vacation leave',
+          description: description || (scheduleType === 'WS' ? 'Requested working schedule' : 'Requested vacation leave'),
           event_date: dateStr,
           event_type: scheduleType,
+          schedule_option: scheduleOption,
           status: 'pending'
         });
         createdCount++;
       } catch (err) {
         console.error('Failed to create schedule for', dateStr, err);
       }
-      currentDateObj.setDate(currentDateObj.getDate() + 1);
     }
 
     setShowScheduleModal(false);
+    setSelectedDates([]);
+    setDescription('');
+    setScheduleOption('');
     setLoading(false);
 
     if (createdCount > 0) {
       addNotification({
         type: 'success',
-        message: `Submitted ${createdCount} schedule requests for approval.`
+        message: `Submitted ${createdCount} schedule request${createdCount > 1 ? 's' : ''} for approval.`
       });
       fetchEvents();
     } else {
       addNotification({
         type: 'warning',
-        message: `Invalid date range selected.`
+        message: `No schedules were created. Please check your selection.`
       });
     }
   };
@@ -352,7 +448,7 @@ const CalendarPage = () => {
     if (!newRescheduleDate) return;
 
     // Prevent past dates
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
     if (newRescheduleDate < todayStr) {
       addNotification({ type: 'warning', message: 'Cannot reschedule to a past date.' });
       return;
@@ -363,10 +459,11 @@ const CalendarPage = () => {
       const res = await axios.put(`${API_BASE}/calendar.php`, {
         id: rescheduleData.id,
         action: 'edit',
-        title: rescheduleData.title,
-        description: rescheduleData.description,
+        title: rescheduleMode === 'cancel' ? `[Cancel Request] ${rescheduleData.title}` : rescheduleTitle,
+        description: rescheduleDesc,
         event_date: newRescheduleDate,
-        event_type: rescheduleData.event_type,
+        event_type: rescheduleMode === 'cancel' ? 'Cancel' : rescheduleType,
+        schedule_option: rescheduleMode === 'cancel' ? rescheduleData.schedule_option : rescheduleOption,
         user_id: user.id,
         status: 'pending'
       });
@@ -410,29 +507,29 @@ const CalendarPage = () => {
 
   const getDateDisplay = () => {
     if (viewMode === 'month' || viewMode === 'list') {
-       return `${currentDate.toLocaleString('default', { month: 'long' })} ${currentDate.getFullYear()}`;
+      return `${currentDate.toLocaleString('default', { month: 'long' })} ${currentDate.getFullYear()}`;
     } else if (viewMode === 'week') {
-       const start = new Date(currentDate);
-       const day = start.getDay();
-       const diff = (day + 7 - 4) % 7;
-       start.setDate(start.getDate() - diff);
-       const end = new Date(start);
-       end.setDate(end.getDate() + 6);
-       
-       if (start.getMonth() === end.getMonth()) {
-         return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()} - ${end.getDate()}, ${start.getFullYear()}`;
-       } else if (start.getFullYear() === end.getFullYear()) {
-         return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()} - ${end.toLocaleString('default', { month: 'short' })} ${end.getDate()}, ${start.getFullYear()}`;
-       } else {
-         return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()}, ${start.getFullYear()} - ${end.toLocaleString('default', { month: 'short' })} ${end.getDate()}, ${end.getFullYear()}`;
-       }
+      const start = new Date(currentDate);
+      const day = start.getDay();
+      const diff = (day + 7 - 4) % 7;
+      start.setDate(start.getDate() - diff);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+
+      if (start.getMonth() === end.getMonth()) {
+        return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()} - ${end.getDate()}, ${start.getFullYear()}`;
+      } else if (start.getFullYear() === end.getFullYear()) {
+        return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()} - ${end.toLocaleString('default', { month: 'short' })} ${end.getDate()}, ${start.getFullYear()}`;
+      } else {
+        return `${start.toLocaleString('default', { month: 'short' })} ${start.getDate()}, ${start.getFullYear()} - ${end.toLocaleString('default', { month: 'short' })} ${end.getDate()}, ${end.getFullYear()}`;
+      }
     }
   };
 
   const getMonthStr = (d) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   };
-  
+
   const getWeekStr = (d) => {
     const date = new Date(d);
     const day = date.getDay();
@@ -447,7 +544,7 @@ const CalendarPage = () => {
   const handleDateFilterChange = (e) => {
     const val = e.target.value;
     if (!val) return;
-    
+
     if (viewMode === 'month' || viewMode === 'list') {
       const [y, m] = val.split('-');
       setCurrentDate(new Date(parseInt(y), parseInt(m) - 1, 1));
@@ -579,13 +676,13 @@ const CalendarPage = () => {
       setDescription(evt.description || '');
       setEventDate(evt.event_date.split(' ')[0]);
       setEventType(evt.event_type);
+      setScheduleOption(evt.schedule_option || '');
       setTargetUserId(evt.user_id);
       setShowAddModal(true);
     } else if (!isAdmin) {
       if (String(evt.user_id) === String(user.id)) {
-        setRescheduleData(evt);
-        setNewRescheduleDate(evt.event_date);
-        setShowRescheduleModal(true);
+        setOwnScheduleData(evt);
+        setShowOwnScheduleModal(true);
       } else {
         addNotification({
           type: 'warning',
@@ -632,27 +729,27 @@ const CalendarPage = () => {
     <div className="page-container">
       <div className="premium-calendar-header">
         <div className="header-single-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <h1 className="calendar-main-title" style={{ fontSize: '1.4rem', margin: 0 }}>Calendar</h1>
-            
+
             <div className="view-mode-toggle" style={{ display: 'flex', background: 'rgba(0, 0, 0, 0.04)', borderRadius: '8px', padding: '4px' }}>
               <button className={`view-btn ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>Month</button>
               <button className={`view-btn ${viewMode === 'week' ? 'active' : ''}`} onClick={() => setViewMode('week')}>Week</button>
               <button className={`view-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>List</button>
             </div>
           </div>
-          
+
           <div className="date-navigation" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             <button onClick={prevPeriod} className="nav-arrow-btn"><ChevronLeft size={16} /></button>
             {viewMode === 'week' ? (
-              <CustomWeekPicker 
+              <CustomWeekPicker
                 value={getWeekStr(currentDate)}
                 onChange={handleWeekPickerChange}
                 className="calendar-week-picker"
               />
             ) : (
-              <div 
+              <div
                 style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minWidth: '160px', cursor: 'pointer' }}
                 onClick={() => {
                   if (dateInputRef.current && typeof dateInputRef.current.showPicker === 'function') {
@@ -661,7 +758,7 @@ const CalendarPage = () => {
                 }}
               >
                 <h2 className="current-date-text" style={{ fontSize: '1.1rem', margin: 0, textAlign: 'center' }}>{getDateDisplay()}</h2>
-                <input 
+                <input
                   ref={dateInputRef}
                   type="month"
                   value={getMonthStr(currentDate)}
@@ -682,16 +779,31 @@ const CalendarPage = () => {
             <button onClick={nextPeriod} className="nav-arrow-btn"><ChevronRight size={16} /></button>
             <button onClick={today} className="today-btn">Today</button>
           </div>
-          
+
           <div className="header-actions" style={{ display: 'flex', gap: '12px' }}>
+            <div className="legend-dropdown-container" style={{ position: 'relative' }}>
+              <button className="action-btn huddle-btn" onClick={() => setShowLegend(!showLegend)} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--card-bg)' }}>
+                Legend <ChevronRight size={16} style={{ transform: showLegend ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+              </button>
+              {showLegend && (
+                <div className="legend-dropdown-menu glass" style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', padding: '12px', borderRadius: '12px', zIndex: 100, minWidth: '220px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-color)' }}><span className="legend-color" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span> WS</div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-color)' }}><span className="legend-color" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#3b82f6', display: 'inline-block' }}></span> VL</div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-color)' }}><span className="legend-color" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#eab308', display: 'inline-block' }}></span> Alternate on Sat/Sun</div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-color)' }}><span className="legend-color" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#9ca3af', display: 'inline-block' }}></span> Available on warehouse</div>
+                  <div className="legend-item" style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: 'var(--text-color)' }}><span className="legend-color" style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span> Holiday</div>
+                </div>
+              )}
+            </div>
+
             {!isAdmin ? (
               <button className="action-btn huddle-btn" onClick={() => setShowScheduleModal(true)}>
                 <Clock size={16} /> Request Schedule
               </button>
             ) : (
               <>
-                <button 
-                  className={`action-btn ${viewMode === 'holidays' ? 'create-btn' : 'huddle-btn'}`} 
+                <button
+                  className={`action-btn ${viewMode === 'holidays' ? 'create-btn' : 'huddle-btn'}`}
                   onClick={() => setViewMode(viewMode === 'holidays' ? 'month' : 'holidays')}
                 >
                   <CalendarIcon size={16} /> {viewMode === 'holidays' ? 'Show Calendar' : 'Check Holiday'}
@@ -750,7 +862,7 @@ const CalendarPage = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                            className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
                             onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                             title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
@@ -813,7 +925,7 @@ const CalendarPage = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`event-badge week-event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                            className={`event-badge week-event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
                             onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                             title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
@@ -853,25 +965,7 @@ const CalendarPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="holidays-row">
-                     <td style={{ textAlign: 'left', paddingLeft: '16px', fontWeight: 600, color: 'var(--primary)' }}>Holidays / Global</td>
-                     {weekCells.map((cell, idx) => {
-                       const dayHolidays = getHolidaysForDate(cell.date);
-                       const isToday = new Date().toDateString() === cell.date.toDateString();
-                       return (
-                         <td key={idx} className={`admin-week-cell ${isToday ? 'today-cell' : ''}`}>
-                            <div className="admin-cell-events">
-                              {dayHolidays.map(h => (
-                                 <div key={h.id} className="event-badge event-type-holiday" style={{ margin: '2px 0', fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex' }}>
-                                   <span className="event-icon" style={{ fontSize: '10px' }}>🎄</span>
-                                   <span className="event-text">{h.name}</span>
-                                 </div>
-                              ))}
-                            </div>
-                         </td>
-                       );
-                     })}
-                  </tr>
+
                   {employees.map(emp => (
                     <tr key={emp.id} className="employee-row">
                       <td style={{ textAlign: 'left', paddingLeft: '16px' }}>
@@ -881,7 +975,8 @@ const CalendarPage = () => {
                       {weekCells.map((cell, idx) => {
                         const dayEvents = events.filter(e => {
                           if (!e.event_date) return false;
-                          const dateMatch = e.event_date.split(' ')[0] === cell.date.toISOString().split('T')[0];
+                          const cellDateStr = `${cell.date.getFullYear()}-${String(cell.date.getMonth() + 1).padStart(2, '0')}-${String(cell.date.getDate()).padStart(2, '0')}`;
+                          const dateMatch = e.event_date.split(' ')[0] === cellDateStr;
                           return dateMatch && String(e.user_id) === String(emp.id);
                         });
                         const isToday = new Date().toDateString() === cell.date.toDateString();
@@ -893,7 +988,7 @@ const CalendarPage = () => {
                                 return (
                                   <div
                                     key={item.id}
-                                    className={`event-badge event-status-${item.status} event-type-${item.event_type} ${item.status === 'pending' ? 'pending' : ''}`}
+                                    className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
                                     onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                                     title={`${item.title} (${item.status})`}
                                     style={{ margin: '2px 0', fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex' }}
@@ -922,7 +1017,7 @@ const CalendarPage = () => {
               const monthHolidays = getHolidaysForMonth();
               // Create combined items grouped by date
               const allItems = {};
-              
+
               monthHolidays.forEach(h => {
                 const dateStr = h.holiday_date;
                 if (!allItems[dateStr]) allItems[dateStr] = [];
@@ -1133,64 +1228,213 @@ const CalendarPage = () => {
       )}
 
       {/* Add/Request/Edit Event Modal */}
-      {showAddModal && (
-        <div className="modal-overlay">
-          <div className="clean-modal-content">
-            <div className="clean-modal-header">
-              <h3>{isAdmin ? (editingEventId ? 'Edit Event' : 'New Event') : 'Request Date'}</h3>
-              <button className="clean-close-btn" onClick={() => { setShowAddModal(false); setEditingEventId(null); }}><X size={20} /></button>
-            </div>
-            <form onSubmit={handleAddEvent}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
-                <div className="input-group">
-                  <label>Event Title</label>
-                  <input type="text" placeholder="Add title" value={title} onChange={e => setTitle(e.target.value)} required style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
-                </div>
-                {isAdmin && (
-                  <div className="input-group">
-                    <label>Employee</label>
-                    <select value={targetUserId} onChange={e => setTargetUserId(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}>
-                      <option value={user.id}>Me ({user.full_name || 'Admin'})</option>
-                      {employees.filter(emp => String(emp.id) !== String(user.id)).map(emp => (
-                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div className="date-range-container">
-                  <div className="input-group" style={{ flex: 1 }}>
-                    <label>Date</label>
-                    <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} min={new Date().toISOString().split('T')[0]} max="9999-12-31" required style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
-                  </div>
-                  <div className="input-group" style={{ flex: 1 }}>
-                    <label>Category</label>
-                    <select value={eventType} onChange={e => setEventType(e.target.value)} style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}>
-                      {EVENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="input-group">
-                  <label>Description (Optional)</label>
-                  <textarea placeholder="Add description" value={description} onChange={e => setDescription(e.target.value)} rows="3" style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }} />
-                </div>
+      {showAddModal && (() => {
+        const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+        // Mini calendar helpers for admin pick mode
+        const adminMiniYear = adminMiniCalMonth.getFullYear();
+        const adminMiniMonthIdx = adminMiniCalMonth.getMonth();
+        const adminMiniFirstDay = new Date(adminMiniYear, adminMiniMonthIdx, 1).getDay();
+        const adminMiniDaysInMonth = new Date(adminMiniYear, adminMiniMonthIdx + 1, 0).getDate();
+        const adminMiniDaysInPrev = new Date(adminMiniYear, adminMiniMonthIdx, 0).getDate();
+        const adminMiniCells = [];
+        for (let i = 0; i < adminMiniFirstDay; i++) {
+          adminMiniCells.push({ d: adminMiniDaysInPrev - adminMiniFirstDay + i + 1, inMonth: false, dateStr: null });
+        }
+        for (let i = 1; i <= adminMiniDaysInMonth; i++) {
+          const mm = String(adminMiniMonthIdx + 1).padStart(2, '0');
+          const dd = String(i).padStart(2, '0');
+          adminMiniCells.push({ d: i, inMonth: true, dateStr: `${adminMiniYear}-${mm}-${dd}` });
+        }
+        const adminMiniRemaining = 42 - adminMiniCells.length;
+        for (let i = 1; i <= adminMiniRemaining; i++) {
+          adminMiniCells.push({ d: i, inMonth: false, dateStr: null });
+        }
+
+        const toggleAdminDate = (dateStr) => {
+          if (!dateStr || dateStr < todayStr) return;
+          setAdminSelectedDates(prev =>
+            prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+          );
+        };
+
+        const isPastDate = eventDate && eventDate < todayStr;
+        const isEditMode = !!editingEventId;
+        const isPickMode = !isEditMode && adminDateMode === 'pick';
+
+        // Compact field styles
+        const selStyle = { padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%' };
+        const inputStyle = { padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' };
+        const labelStyle = { fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' };
+
+        return (
+          <div className="modal-overlay">
+            <div className="clean-modal-content landscape" style={{ maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Header */}
+              <div className="clean-modal-header" style={{ padding: '14px 20px', flexShrink: 0 }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>
+                  {isAdmin ? (isEditMode ? '✏️ Edit Event' : '📋 New Event Registration') : '📅 Request Date'}
+                </h3>
+                <button className="clean-close-btn" onClick={() => { setShowAddModal(false); setEditingEventId(null); setAdminSelectedDates([]); }}><X size={18} /></button>
               </div>
-              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {eventDate && eventDate < new Date().toISOString().split('T')[0] && (
-                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                    ⚠️ Cannot schedule events in the past.
+
+              <form onSubmit={handleAddEvent} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+                  {/* LEFT COLUMN — Mini Calendar (only in pick mode) */}
+                  {isPickMode && (
+                    <div style={{ width: '290px', flexShrink: 0, borderRight: '1px solid var(--glass-border)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <button type="button" className="mini-cal-nav-btn" onClick={() => setAdminMiniCalMonth(new Date(adminMiniYear, adminMiniMonthIdx - 1, 1))}>‹</button>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                          {adminMiniCalMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button type="button" className="mini-cal-nav-btn" onClick={() => setAdminMiniCalMonth(new Date(adminMiniYear, adminMiniMonthIdx + 1, 1))}>›</button>
+                      </div>
+                      <div className="mini-cal-grid" style={{ gap: '2px' }}>
+                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                          <div key={d} className="mini-cal-dow" style={{ fontSize: '0.65rem', padding: '2px 0' }}>{d}</div>
+                        ))}
+                        {adminMiniCells.map((cell, idx) => {
+                          const isPast = cell.dateStr && cell.dateStr < todayStr;
+                          const isSelected = cell.dateStr && adminSelectedDates.includes(cell.dateStr);
+                          const isToday = cell.dateStr === todayStr;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              className={`mini-cal-day compact-day ${!cell.inMonth ? 'other-month' : ''} ${isPast ? 'past-day' : ''} ${isSelected ? 'selected-day' : ''} ${isToday ? 'today-day' : ''}`}
+                              onClick={() => toggleAdminDate(cell.dateStr)}
+                              disabled={!cell.inMonth || isPast}
+                              title={cell.dateStr || ''}
+                            >
+                              {cell.d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {adminSelectedDates.length > 0 ? `${adminSelectedDates.length} date${adminSelectedDates.length > 1 ? 's' : ''} selected` : 'Click a date to select'}
+                        </span>
+                        {adminSelectedDates.length > 0 && (
+                          <div className="chips-scroll" style={{ marginTop: '6px', maxHeight: '64px' }}>
+                            {[...adminSelectedDates].sort().map(d => (
+                              <span key={d} className="date-chip">
+                                {new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                <button type="button" className="chip-remove" onClick={() => setAdminSelectedDates(prev => prev.filter(x => x !== d))}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RIGHT COLUMN — Form Fields */}
+                  <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                    {/* Mode toggle */}
+                    {!isEditMode && (
+                      <div className="date-mode-toggle">
+                        <button type="button" className={`date-mode-btn ${adminDateMode === 'single' ? 'active' : ''}`} onClick={() => { setAdminDateMode('single'); setAdminSelectedDates([]); }}>
+                          📅 Single Date
+                        </button>
+                        <button type="button" className={`date-mode-btn ${adminDateMode === 'pick' ? 'active' : ''}`} onClick={() => { setAdminDateMode('pick'); setAdminMiniCalMonth(new Date()); setEventDate(''); }}>
+                          🗓️ Pick Multiple
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Employee + Category */}
+                    <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                      {isAdmin && (
+                        <div>
+                          <label style={labelStyle}>Employee</label>
+                          <select value={targetUserId} onChange={e => setTargetUserId(e.target.value)} style={selStyle}>
+                            <option value={user.id}>Me ({user.full_name || 'Admin'})</option>
+                            {employees.filter(emp => String(emp.id) !== String(user.id)).map(emp => (
+                              <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label style={labelStyle}>Category</label>
+                        <select value={eventType} onChange={e => setEventType(e.target.value)} style={selStyle}>
+                          <option value="WS">Work Schedule</option>
+                          <option value="VL">Vacation Leave</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Date + Schedule Option (single/edit mode) */}
+                    {!isPickMode && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={labelStyle}>Date</label>
+                          <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} min={todayStr} max="9999-12-31" required style={inputStyle} />
+                        </div>
+                        <div>
+                          <label style={labelStyle}>Schedule Option</label>
+                          <select value={scheduleOption} onChange={e => setScheduleOption(e.target.value)} style={selStyle}>
+                            <option value="">None</option>
+                            <option value="alternate">Alternate Sat/Sun</option>
+                            <option value="warehouse">Available at Warehouse</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schedule Option for pick mode */}
+                    {isPickMode && (
+                      <div>
+                        <label style={labelStyle}>Schedule Option</label>
+                        <select value={scheduleOption} onChange={e => setScheduleOption(e.target.value)} style={selStyle}>
+                          <option value="">None</option>
+                          <option value="alternate">Alternate Sat/Sun</option>
+                          <option value="warehouse">Available at Warehouse</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Description */}
+                    <div>
+                      <label style={labelStyle}>Description (Optional)</label>
+                      <textarea placeholder="Add a note..." value={description} onChange={e => setDescription(e.target.value)} rows="3" style={{ ...inputStyle, resize: 'none', lineHeight: '1.4' }} />
+                    </div>
+
+                    {/* Warnings */}
+                    {isPastDate && !isPickMode && (
+                      <div style={{ color: '#ef4444', fontSize: '0.82rem', textAlign: 'center', background: 'rgba(239,68,68,0.08)', padding: '7px', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+                        ⚠️ Cannot schedule events in the past.
+                      </div>
+                    )}
+
                   </div>
-                )}
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => { setShowAddModal(false); setEditingEventId(null); }}>Cancel</button>
-                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || (eventDate && eventDate < new Date().toISOString().split('T')[0])}>
-                    {isAdmin ? (editingEventId ? 'Update Event' : 'Save Event') : 'Submit'}
+                </div>
+
+                {/* Footer */}
+                <div className="clean-modal-footer" style={{ padding: '12px 20px', borderTop: '1px solid var(--glass-border)', flexShrink: 0, justifyContent: 'flex-end', gap: '10px' }}>
+                  <button type="button" className="btn btn-ghost" style={{ padding: '7px 20px' }} onClick={() => { setShowAddModal(false); setEditingEventId(null); setAdminSelectedDates([]); }}>Cancel</button>
+                  <button
+                    type="submit"
+                    className="schedule-submit-btn"
+                    style={{ padding: '7px 20px', margin: 0 }}
+                    disabled={loading || (!isPickMode && isPastDate) || (isPickMode && adminSelectedDates.length === 0)}
+                  >
+                    {loading ? 'Saving…'
+                      : isAdmin
+                        ? (isEditMode ? 'Update Event' : isPickMode && adminSelectedDates.length > 0 ? `Save ${adminSelectedDates.length} Event${adminSelectedDates.length > 1 ? 's' : ''}` : 'Save Event')
+                        : (isPickMode && adminSelectedDates.length > 0 ? `Submit ${adminSelectedDates.length} Request${adminSelectedDates.length > 1 ? 's' : ''}` : 'Submit Request')}
                   </button>
                 </div>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
 
       {/* Approve/Reject Modal */}
       {showApproveModal && selectedEvent && (
@@ -1325,66 +1569,279 @@ const CalendarPage = () => {
         </div>
       )}
       {/* Request Schedule Modal */}
-      {showScheduleModal && (
+      {showScheduleModal && (() => {
+        const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
+
+        // Mini calendar helpers
+        const miniYear = miniCalMonth.getFullYear();
+        const miniMonthIdx = miniCalMonth.getMonth();
+        const miniFirstDay = new Date(miniYear, miniMonthIdx, 1).getDay();
+        const miniDaysInMonth = new Date(miniYear, miniMonthIdx + 1, 0).getDate();
+        const miniDaysInPrev = new Date(miniYear, miniMonthIdx, 0).getDate();
+        const miniCells = [];
+        for (let i = 0; i < miniFirstDay; i++) {
+          miniCells.push({ d: miniDaysInPrev - miniFirstDay + i + 1, inMonth: false, dateStr: null });
+        }
+        for (let i = 1; i <= miniDaysInMonth; i++) {
+          const mm = String(miniMonthIdx + 1).padStart(2, '0');
+          const dd = String(i).padStart(2, '0');
+          miniCells.push({ d: i, inMonth: true, dateStr: `${miniYear}-${mm}-${dd}` });
+        }
+        const remaining = 42 - miniCells.length;
+        for (let i = 1; i <= remaining; i++) {
+          miniCells.push({ d: i, inMonth: false, dateStr: null });
+        }
+
+        const toggleDate = (dateStr) => {
+          if (!dateStr || dateStr < todayStr) return;
+          setSelectedDates(prev =>
+            prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+          );
+        };
+
+        const hasPastSelection = scheduleDateMode === 'range'
+          ? (scheduleStartDate && scheduleStartDate < todayStr) || (scheduleEndDate && scheduleEndDate < todayStr)
+          : false;
+
+        return (
+          <div className="modal-overlay">
+            <div className="clean-modal-content landscape" style={{ maxHeight: '88vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div className="clean-modal-header" style={{ padding: '14px 20px', flexShrink: 0 }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>📋 Request Schedule</h3>
+                <button className="clean-close-btn" onClick={() => { setShowScheduleModal(false); setSelectedDates([]); }}><X size={18} /></button>
+              </div>
+              <form onSubmit={handleScheduleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+                  {/* LEFT COLUMN — Mini Calendar (only in pick mode) */}
+                  {scheduleDateMode === 'pick' && (
+                    <div style={{ width: '290px', flexShrink: 0, borderRight: '1px solid var(--glass-border)', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <button type="button" className="mini-cal-nav-btn" onClick={() => setMiniCalMonth(new Date(miniYear, miniMonthIdx - 1, 1))}>
+                          ‹
+                        </button>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                          {miniCalMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </span>
+                        <button type="button" className="mini-cal-nav-btn" onClick={() => setMiniCalMonth(new Date(miniYear, miniMonthIdx + 1, 1))}>
+                          ›
+                        </button>
+                      </div>
+                      <div className="mini-cal-grid" style={{ gap: '2px' }}>
+                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                          <div key={d} className="mini-cal-dow" style={{ fontSize: '0.65rem', padding: '2px 0' }}>{d}</div>
+                        ))}
+                        {miniCells.map((cell, idx) => {
+                          const isPast = cell.dateStr && cell.dateStr < todayStr;
+                          const isSelected = cell.dateStr && selectedDates.includes(cell.dateStr);
+                          const isToday = cell.dateStr === todayStr;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              className={`mini-cal-day compact-day ${!cell.inMonth ? 'other-month' : ''} ${isPast ? 'past-day' : ''} ${isSelected ? 'selected-day' : ''} ${isToday ? 'today-day' : ''}`}
+                              onClick={() => toggleDate(cell.dateStr)}
+                              disabled={!cell.inMonth || isPast}
+                              title={cell.dateStr || ''}
+                            >
+                              {cell.d}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '8px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          {selectedDates.length > 0 ? `${selectedDates.length} date${selectedDates.length > 1 ? 's' : ''} selected` : 'Click a date to select'}
+                        </span>
+                        {selectedDates.length > 0 && (
+                          <div className="chips-scroll" style={{ marginTop: '6px', maxHeight: '64px' }}>
+                            {[...selectedDates].sort().map(d => (
+                              <span key={d} className="date-chip">
+                                {new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                <button type="button" className="chip-remove" onClick={() => setSelectedDates(prev => prev.filter(x => x !== d))}>×</button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RIGHT COLUMN — Form Fields */}
+                  <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    
+                    {/* Date Mode Toggle */}
+                    <div className="date-mode-toggle">
+                      <button
+                        type="button"
+                        className={`date-mode-btn ${scheduleDateMode === 'range' ? 'active' : ''}`}
+                        onClick={() => setScheduleDateMode('range')}
+                      >
+                        📅 Date Range
+                      </button>
+                      <button
+                        type="button"
+                        className={`date-mode-btn ${scheduleDateMode === 'pick' ? 'active' : ''}`}
+                        onClick={() => { setScheduleDateMode('pick'); setMiniCalMonth(new Date()); }}
+                      >
+                        🗓️ Pick Dates
+                      </button>
+                    </div>
+
+                    {/* Schedule Type */}
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Schedule Type</label>
+                      <select
+                        value={scheduleType}
+                        onChange={(e) => setScheduleType(e.target.value)}
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%' }}
+                      >
+                        <option value="WS">Work Shift</option>
+                        <option value="VL">Vacation Leave</option>
+                      </select>
+                    </div>
+
+                    {/* Date Range Mode */}
+                    {scheduleDateMode === 'range' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Start Date</label>
+                          <input
+                            type="date"
+                            value={scheduleStartDate}
+                            onChange={(e) => setScheduleStartDate(e.target.value)}
+                            min={todayStr}
+                            max="9999-12-31"
+                            required
+                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>End Date</label>
+                          <input
+                            type="date"
+                            value={scheduleEndDate}
+                            onChange={(e) => setScheduleEndDate(e.target.value)}
+                            min={scheduleStartDate || todayStr}
+                            max="9999-12-31"
+                            required
+                            style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schedule Option */}
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Schedule Option</label>
+                      <select
+                        value={scheduleOption}
+                        onChange={(e) => setScheduleOption(e.target.value)}
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%' }}
+                      >
+                        <option value="">None</option>
+                        <option value="alternate">Alternate Sat/Sun</option>
+                        <option value="warehouse">Available at Warehouse</option>
+                      </select>
+                    </div>
+
+                    {/* Description */}
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Description (Optional)</label>
+                      <textarea
+                        placeholder="Add a note..."
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        rows="3"
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box', resize: 'none', lineHeight: '1.4' }}
+                      />
+                    </div>
+
+                    {/* Warnings */}
+                    {hasPastSelection && (
+                      <div style={{ color: '#ef4444', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)', marginTop: '8px' }}>
+                        ⚠️ Past dates cannot be requested.
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="clean-modal-footer" style={{ padding: '14px 20px', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.02)' }}>
+                  <button type="button" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.9rem' }} onClick={() => { setShowScheduleModal(false); setSelectedDates([]); }}>Cancel</button>
+                  <button
+                    type="submit"
+                    className="schedule-submit-btn"
+                    style={{ margin: 0, padding: '8px 24px', fontSize: '0.9rem', minWidth: '120px' }}
+                    disabled={loading || hasPastSelection || (scheduleDateMode === 'pick' && selectedDates.length === 0)}
+                  >
+                    {loading ? 'Submitting…' : `Submit${scheduleDateMode === 'pick' && selectedDates.length > 0 ? ` (${selectedDates.length})` : ''}`}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Own Schedule Details Modal */}
+      {showOwnScheduleModal && ownScheduleData && (
         <div className="modal-overlay">
           <div className="schedule-modal-content">
             <div className="modal-header">
-              <h3>Request Schedule</h3>
-              <button className="close-btn" onClick={() => setShowScheduleModal(false)}><X size={20} /></button>
+              <h3>Schedule Details</h3>
+              <button className="close-btn" onClick={() => setShowOwnScheduleModal(false)}><X size={20} /></button>
             </div>
-            <form onSubmit={handleScheduleSubmit}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
-                <div className="input-group">
-                  <label>Schedule Type</label>
-                  <select
-                    value={scheduleType}
-                    onChange={(e) => setScheduleType(e.target.value)}
-                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)' }}
-                  >
-                    <option value="WS">Work Shift</option>
-                    <option value="VL">Vacation Leave</option>
-                  </select>
-                </div>
-                <div className="date-range-container">
-                  <div className="input-group" style={{ flex: 1 }}>
-                    <label>Start Date</label>
-                    <input
-                      type="date"
-                      value={scheduleStartDate}
-                      onChange={(e) => setScheduleStartDate(e.target.value)}
-                      min={new Date().toISOString().split('T')[0]}
-                      max="9999-12-31"
-                      required
-                      style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }}
-                    />
-                  </div>
-                  <div className="date-separator">to</div>
-                  <div className="input-group" style={{ flex: 1 }}>
-                    <label>End Date</label>
-                    <input
-                      type="date"
-                      value={scheduleEndDate}
-                      onChange={(e) => setScheduleEndDate(e.target.value)}
-                      min={scheduleStartDate || new Date().toISOString().split('T')[0]}
-                      max="9999-12-31"
-                      required
-                      style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)' }}
-                    />
-                  </div>
-                </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '10px 0', fontSize: '0.95rem' }}>
+              <p style={{ margin: 0 }}><strong>Date:</strong> {new Date(ownScheduleData.event_date.split(' ')[0] + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}</p>
+              <p style={{ margin: 0 }}><strong>Type:</strong> {ownScheduleData.event_type === 'WS' ? 'Work Shift (WS)' : ownScheduleData.event_type}</p>
+              <p style={{ margin: 0 }}><strong>Schedule Option:</strong> {ownScheduleData.schedule_option || 'None'}</p>
+              <p style={{ margin: 0 }}><strong>Title:</strong> {ownScheduleData.title}</p>
+              {ownScheduleData.description && <p style={{ margin: 0 }}><strong>Description:</strong> {ownScheduleData.description}</p>}
+              <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <strong>Status:</strong>
+                <span className={`status-badge status-${ownScheduleData.status}`}>{ownScheduleData.status}</span>
+              </p>
+            </div>
+
+            {ownScheduleData.event_date.split(' ')[0] >= new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] && (
+              <div style={{ marginTop: '20px', display: 'flex', gap: '12px' }}>
+                <button
+                  className="schedule-submit-btn"
+                  style={{ flex: 1, margin: 0, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+                  onClick={() => {
+                    setShowOwnScheduleModal(false);
+                    setRescheduleMode('cancel');
+                    setRescheduleData(ownScheduleData);
+                    setNewRescheduleDate(ownScheduleData.event_date.split(' ')[0]);
+                    setRescheduleDesc('');
+                    setShowRescheduleModal(true);
+                  }}
+                >
+                  <X size={16} style={{ marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                  Cancel Schedule
+                </button>
+                <button
+                  className="schedule-submit-btn"
+                  style={{ flex: 1, margin: 0 }}
+                  onClick={() => {
+                    setShowOwnScheduleModal(false);
+                    setRescheduleMode('reschedule');
+                    setRescheduleData(ownScheduleData);
+                    setNewRescheduleDate(ownScheduleData.event_date.split(' ')[0]);
+                    setRescheduleTitle(ownScheduleData.title);
+                    setRescheduleDesc(ownScheduleData.description || '');
+                    setRescheduleType(ownScheduleData.event_type);
+                    setRescheduleOption(ownScheduleData.schedule_option || '');
+                    setShowRescheduleModal(true);
+                  }}
+                >
+                  <CalendarIcon size={16} style={{ marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                  Reschedule
+                </button>
               </div>
-              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {(scheduleStartDate < new Date().toISOString().split('T')[0] || scheduleEndDate < new Date().toISOString().split('T')[0]) && (
-                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                    ⚠️ Past dates cannot be requested.
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => setShowScheduleModal(false)}>Cancel</button>
-                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || scheduleStartDate < new Date().toISOString().split('T')[0] || scheduleEndDate < new Date().toISOString().split('T')[0]}>Submit</button>
-                </div>
-              </div>
-            </form>
+            )}
           </div>
         </div>
       )}
@@ -1392,36 +1849,81 @@ const CalendarPage = () => {
       {/* Reschedule Modal */}
       {showRescheduleModal && (
         <div className="modal-overlay">
-          <div className="schedule-modal-content">
-            <div className="modal-header">
-              <h3>Reschedule Request</h3>
-              <button className="close-btn" onClick={() => setShowRescheduleModal(false)}><X size={20} /></button>
+          <div className="clean-modal-content" style={{ maxWidth: '800px', width: '95%' }}>
+            <div className="clean-modal-header" style={{ padding: '14px 20px', flexShrink: 0 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{rescheduleMode === 'cancel' ? 'Cancel Schedule Request' : 'Reschedule Request'}</h3>
+              <button className="clean-close-btn" onClick={() => setShowRescheduleModal(false)}><X size={18} /></button>
             </div>
             <form onSubmit={handleRescheduleSubmit}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '10px 0' }}>
-                <div className="input-group">
-                  <label>New Date</label>
-                  <input
-                    type="date"
-                    value={newRescheduleDate}
-                    onChange={e => setNewRescheduleDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    max="9999-12-31"
-                    required
-                    style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--glass-border)', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-main)', width: '100%', boxSizing: 'border-box' }}
-                  />
+              <div style={{ display: 'grid', gridTemplateColumns: rescheduleMode === 'cancel' ? '1fr' : '1fr 1fr', gap: '20px', padding: '16px' }}>
+                
+                {/* Left Column (Only for Reschedule) */}
+                {rescheduleMode === 'reschedule' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Title</label>
+                      <input type="text" value={rescheduleTitle} onChange={e => setRescheduleTitle(e.target.value)} required style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Type</label>
+                        <select value={rescheduleType} onChange={e => setRescheduleType(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}>
+                          <option value="WS">Work Shift (WS)</option>
+                          <option value="VL">Vacation Leave (VL)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Schedule Option</label>
+                        <select value={rescheduleOption} onChange={e => setRescheduleOption(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}>
+                          <option value="">None</option>
+                          <option value="alternate">Alternate on Sat/Sun</option>
+                          <option value="warehouse">Available at warehouse</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>New Date</label>
+                      <input
+                        type="date"
+                        value={newRescheduleDate}
+                        onChange={e => setNewRescheduleDate(e.target.value)}
+                        min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0]}
+                        max="9999-12-31"
+                        required
+                        style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Right Column / Full Width (Cancel/Description) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', height: '100%' }}>
+                  {rescheduleMode === 'cancel' && (
+                    <div style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '15px', borderRadius: '10px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                      <p style={{ margin: 0, color: 'var(--text-main)' }}>You are requesting to cancel the schedule on <strong>{new Date(newRescheduleDate + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</strong>.</p>
+                    </div>
+                  )}
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Reason / Description {rescheduleMode === 'cancel' && <span style={{ color: '#ef4444' }}>*</span>}</label>
+                    <textarea value={rescheduleDesc} onChange={e => setRescheduleDesc(e.target.value)} required={rescheduleMode === 'cancel'} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box', resize: 'none', flex: 1, minHeight: rescheduleMode === 'cancel' ? '120px' : '90px', lineHeight: '1.4' }} />
+                  </div>
                 </div>
               </div>
-              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {newRescheduleDate && newRescheduleDate < new Date().toISOString().split('T')[0] && (
-                  <div style={{ color: '#ef4444', fontSize: '0.85rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              
+              <div style={{ padding: '0 16px 16px' }}>
+                {rescheduleMode === 'reschedule' && newRescheduleDate && newRescheduleDate < new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] && (
+                  <div style={{ color: '#ef4444', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '16px' }}>
                     ⚠️ Cannot reschedule to a past date.
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button type="button" className="btn btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => setShowRescheduleModal(false)}>Cancel</button>
-                  <button type="submit" className="schedule-submit-btn" style={{ flex: 1, margin: 0 }} disabled={loading || (newRescheduleDate && newRescheduleDate < new Date().toISOString().split('T')[0])}>Submit</button>
-                </div>
+              </div>
+              
+              <div className="clean-modal-footer" style={{ padding: '14px 20px', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.02)' }}>
+                <button type="button" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.9rem' }} onClick={() => setShowRescheduleModal(false)}>Close</button>
+                <button type="submit" className="schedule-submit-btn" style={{ margin: 0, padding: '8px 24px', fontSize: '0.9rem', minWidth: '120px' }} disabled={loading || (rescheduleMode === 'reschedule' && newRescheduleDate && newRescheduleDate < new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0])}>
+                  {rescheduleMode === 'cancel' ? 'Submit Cancellation' : 'Submit Reschedule'}
+                </button>
               </div>
             </form>
           </div>

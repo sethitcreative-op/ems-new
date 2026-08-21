@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Lock, User, Eye, EyeOff, Activity, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, Activity, CheckCircle } from 'lucide-react';
 import './Login.css';
 import API_BASE from '../../config/api';
 
@@ -13,7 +13,7 @@ const backgroundImages = [
 ];
 
 const Login = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -39,7 +39,7 @@ const Login = () => {
       // In a real environment, replace this with actual local IP or URL
       const response = await axios.post(`${API_BASE}/auth.php`, {
         action: 'login',
-        username,
+        email,
         password
       });
 
@@ -115,15 +115,15 @@ const Login = () => {
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
-              <label className="input-label">User name:</label>
+              <label className="input-label">Email:</label>
               <div className="input-wrapper">
-                <User size={20} className="input-icon" />
+                <Mail size={20} className="input-icon" />
                 <input
-                  type="text"
+                  type="email"
                   className="input-field"
-                  placeholder="Enter your username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </div>

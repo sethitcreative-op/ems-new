@@ -202,9 +202,6 @@ const LeaveManagement = () => {
               <label>Leave Type</label>
               <select className="input-field" value={balanceForm.leave_type} onChange={e => setBalanceForm({ ...balanceForm, leave_type: e.target.value })} required>
                 <option value="Vacation Leave">Vacation Leave</option>
-                <option value="Sick Leave">Sick Leave</option>
-                <option value="Maternity Leave">Maternity Leave</option>
-                <option value="Paternity Leave">Paternity Leave</option>
               </select>
             </div>
             <div className="input-group">

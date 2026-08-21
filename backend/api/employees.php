@@ -58,6 +58,22 @@ elseif ($method === 'POST') {
         $profile_picture = uploadProfilePicture($_FILES['profile_picture']);
     }
 
+    // Check for duplicate username
+    $check_query = "SELECT id FROM users WHERE username = :username";
+    if ($isUpdate) {
+        $check_query .= " AND id != :id";
+        $check_stmt = $conn->prepare($check_query);
+        $check_stmt->execute([':username' => $username, ':id' => $id]);
+    } else {
+        $check_stmt = $conn->prepare($check_query);
+        $check_stmt->execute([':username' => $username]);
+    }
+
+    if ($check_stmt->rowCount() > 0) {
+        echo json_encode(["status" => "error", "message" => "Username already exists."]);
+        exit;
+    }
+
     if ($isUpdate) {
         // Update existing employee
         $query = "UPDATE users SET username=:username, role=:role, full_name=:name, hourly_rate=:rate, email=:email, phone=:phone, address=:address, id_number=:id_number, sex=:sex";

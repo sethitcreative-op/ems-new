@@ -10,18 +10,95 @@ if ($method === 'GET') {
     $role = isset($_GET['role']) ? $_GET['role'] : 'user';
     $user_id = isset($_GET['user_id']) ? $_GET['user_id'] : 0;
     
+    // 1. Fetch Events (Work Shifts, Meetings, etc.)
     if ($role === 'admin') {
-        $query = "SELECT e.*, u.full_name as user_name FROM events e JOIN users u ON e.user_id = u.id ORDER BY event_date ASC";
-        $stmt = $conn->prepare($query);
-        $stmt->execute();
+        $queryEvents = "SELECT e.*, u.full_name as user_name, u.profile_picture FROM events e JOIN users u ON e.user_id = u.id";
+        $stmtEvents = $conn->prepare($queryEvents);
+        $stmtEvents->execute();
     } else {
-        $query = "SELECT e.*, u.full_name as user_name FROM events e JOIN users u ON e.user_id = u.id WHERE e.status = 'approved' OR e.user_id = :user_id ORDER BY event_date ASC";
-        $stmt = $conn->prepare($query);
-        $stmt->execute([':user_id' => $user_id]);
+        $queryEvents = "SELECT e.*, u.full_name as user_name, u.profile_picture FROM events e JOIN users u ON e.user_id = u.id WHERE e.status = 'approved' OR e.user_id = :user_id";
+        $stmtEvents = $conn->prepare($queryEvents);
+        $stmtEvents->execute([':user_id' => $user_id]);
     }
+    $events = $stmtEvents->fetchAll(PDO::FETCH_ASSOC);
+
+    // 2. Fetch Leaves and map them to virtual single-day events
+    if ($role === 'admin') {
+        $queryLeaves = "SELECT lr.*, u.full_name as user_name, u.profile_picture FROM leave_requests lr JOIN users u ON lr.user_id = u.id WHERE lr.status = 'approved'";
+        $stmtLeaves = $conn->prepare($queryLeaves);
+        $stmtLeaves->execute();
+    } else {
+        // Users see their own (even pending) + everyone else's approved
+        $queryLeaves = "SELECT lr.*, u.full_name as user_name, u.profile_picture FROM leave_requests lr JOIN users u ON lr.user_id = u.id WHERE lr.status = 'approved' OR lr.user_id = :user_id";
+        $stmtLeaves = $conn->prepare($queryLeaves);
+        $stmtLeaves->execute([':user_id' => $user_id]);
+    }
+    $leaves = $stmtLeaves->fetchAll(PDO::FETCH_ASSOC);
+
+    $virtualLeaveEvents = [];
+    foreach ($leaves as $leave) {
+        $start = new DateTime($leave['start_date']);
+        $end = new DateTime($leave['end_date']);
+        $end->modify('+1 day'); // include end date
+        
+        $interval = DateInterval::createFromDateString('1 day');
+        $period = new DatePeriod($start, $interval, $end);
+        
+        $leaveTypeAbbr = '';
+        if ($leave['leave_type'] === 'Vacation Leave') $leaveTypeAbbr = 'VL';
+        elseif ($leave['leave_type'] === 'Sick Leave') $leaveTypeAbbr = 'SL';
+        elseif ($leave['leave_type'] === 'Paid Day Off') $leaveTypeAbbr = 'PDO';
+        else $leaveTypeAbbr = $leave['leave_type'];
+
+        foreach ($period as $dt) {
+            $virtualLeaveEvents[] = [
+                'id' => 'leave_' . $leave['id'] . '_' . $dt->format('Y-m-d'),
+                'user_id' => $leave['user_id'],
+                'user_name' => $leave['user_name'],
+                'profile_picture' => $leave['profile_picture'],
+                'title' => $leave['leave_type'],
+                'description' => $leave['reason'],
+                'event_date' => $dt->format('Y-m-d'),
+                'event_type' => $leaveTypeAbbr,
+                'status' => $leave['status'],
+                'created_at' => $leave['created_at'],
+                'schedule_option' => 'none',
+                '_isVirtual' => true // flag so frontend knows it's not a real events table row
+            ];
+        }
+    }
+
+    // 3. Fetch Holidays and map them to virtual events
+    $queryHolidays = "SELECT * FROM holidays WHERE is_observed = 1";
+    $stmtHolidays = $conn->prepare($queryHolidays);
+    $stmtHolidays->execute();
+    $holidays = $stmtHolidays->fetchAll(PDO::FETCH_ASSOC);
     
-    $events = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    echo json_encode(["status" => "success", "data" => $events]);
+    $virtualHolidayEvents = [];
+    foreach ($holidays as $holiday) {
+        $virtualHolidayEvents[] = [
+            'id' => 'holiday_' . $holiday['id'],
+            'user_id' => 0, // System wide
+            'user_name' => 'System',
+            'title' => $holiday['name'],
+            'description' => 'Company Holiday',
+            'event_date' => $holiday['holiday_date'],
+            'event_type' => 'Holiday', // Let frontend handle mapping to HL if needed
+            'status' => 'approved',
+            'created_at' => $holiday['created_at'],
+            'schedule_option' => 'none',
+            '_isHoliday' => true,
+            '_isVirtual' => true
+        ];
+    }
+
+    // Merge and sort
+    $allEvents = array_merge($events, $virtualLeaveEvents, $virtualHolidayEvents);
+    usort($allEvents, function($a, $b) {
+        return strtotime($a['event_date']) - strtotime($b['event_date']);
+    });
+    
+    echo json_encode(["status" => "success", "data" => $allEvents]);
 } 
 elseif ($method === 'POST') {
     $user_id = $data->user_id;
@@ -38,7 +115,14 @@ elseif ($method === 'POST') {
         $approved_by_name = $data->admin_name ?? 'System Administrator';
     }
 
-    $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, approved_by_name) VALUES (:user_id, :title, :description, :event_date, :event_type, :status, :approved_by_name)";
+    $schedule_option = $data->schedule_option ?? null;
+
+    if (in_array($event_type, ['SL', 'PDO', 'Holiday'])) {
+        echo json_encode(["status" => "error", "message" => "Leaves and Holidays must be managed through their respective modules."]);
+        exit;
+    }
+
+    $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, approved_by_name, schedule_option) VALUES (:user_id, :title, :description, :event_date, :event_type, :status, :approved_by_name, :schedule_option)";
     $stmt = $conn->prepare($query);
     try {
         $stmt->execute([
@@ -48,7 +132,8 @@ elseif ($method === 'POST') {
             ':event_date' => $event_date,
             ':event_type' => $event_type,
             ':status' => $status,
-            ':approved_by_name' => $approved_by_name
+            ':approved_by_name' => $approved_by_name,
+            ':schedule_option' => $schedule_option
         ]);
         
         if ($is_admin_assigning) {
@@ -76,10 +161,16 @@ elseif ($method === 'PUT') {
         $event_date = $data->event_date ?? '';
         $event_type = $data->event_type ?? 'Other';
         $user_id = $data->user_id ?? 0;
+        $schedule_option = $data->schedule_option ?? null;
         
         $status = $data->status ?? null;
         $is_admin = isset($data->is_admin) ? $data->is_admin : false;
         
+        if (in_array($event_type, ['SL', 'PDO', 'Holiday'])) {
+            echo json_encode(["status" => "error", "message" => "Leaves and Holidays must be managed through their respective modules."]);
+            exit;
+        }
+
         // Check if event is currently approved
         $checkStmt = $conn->prepare("SELECT status FROM events WHERE id = :id");
         $checkStmt->execute([':id' => $event_id]);
@@ -87,7 +178,7 @@ elseif ($method === 'PUT') {
 
         if (!$is_admin && $currentEvent && $currentEvent['status'] === 'approved') {
             // It's already approved. Create a NEW pending request linked to this one
-            $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, reschedule_for_event_id) VALUES (:user_id, :title, :description, :event_date, :event_type, 'pending', :original_id)";
+            $query = "INSERT INTO events (user_id, title, description, event_date, event_type, status, reschedule_for_event_id, schedule_option) VALUES (:user_id, :title, :description, :event_date, :event_type, 'pending', :original_id, :schedule_option)";
             $stmt = $conn->prepare($query);
             try {
                 $stmt->execute([
@@ -96,7 +187,8 @@ elseif ($method === 'PUT') {
                     ':description' => $description,
                     ':event_date' => $event_date,
                     ':event_type' => $event_type,
-                    ':original_id' => $event_id
+                    ':original_id' => $event_id,
+                    ':schedule_option' => $schedule_option
                 ]);
                 
                 $getOrig = $conn->prepare("SELECT event_date FROM events WHERE id = :orig_id");
@@ -115,9 +207,9 @@ elseif ($method === 'PUT') {
         } else {
             // It's pending/rejected, just update in place
             if ($status) {
-                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id, status = :status WHERE id = :id";
+                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id, status = :status, schedule_option = :schedule_option WHERE id = :id";
             } else {
-                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id WHERE id = :id";
+                $query = "UPDATE events SET title = :title, description = :description, event_date = :event_date, event_type = :event_type, user_id = :user_id, schedule_option = :schedule_option WHERE id = :id";
             }
             $stmt = $conn->prepare($query);
             try {
@@ -127,6 +219,7 @@ elseif ($method === 'PUT') {
                     ':event_date' => $event_date,
                     ':event_type' => $event_type,
                     ':user_id' => $user_id,
+                    ':schedule_option' => $schedule_option,
                     ':id' => $event_id
                 ];
                 if ($status) {
@@ -263,10 +356,7 @@ elseif ($method === 'DELETE') {
             exit;
         }
         
-        if ($event['status'] !== 'pending') {
-            echo json_encode(["status" => "error", "message" => "Only pending requests can be cancelled"]);
-            exit;
-        }
+
     }
     
     $fetchStmt = $conn->prepare("SELECT user_id, reschedule_for_event_id FROM events WHERE id = :id");
@@ -289,7 +379,7 @@ elseif ($method === 'DELETE') {
             }
         }
 
-        logAction($conn, $user_id, 'CANCEL_REQUEST', "Cancelled pending request ID {$event_id}.");
+        logAction($conn, $user_id, 'CANCEL_REQUEST', "Deleted request ID {$event_id}.");
         echo json_encode(["status" => "success", "message" => "Request cancelled successfully"]);
     } catch(PDOException $e) {
         echo json_encode(["status" => "error", "message" => "Could not cancel request"]);

@@ -1,19 +1,29 @@
-import React, { useState } from 'react';
-import { Mail, X, Send, Paperclip, Type } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Mail, X, Send, Paperclip, Type, Bold, Italic, Underline } from 'lucide-react';
+import axios from 'axios';
 import './FloatingEmail.css';
+import API_BASE from '../config/api';
 
 const FloatingEmail = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [showFormatting, setShowFormatting] = useState(false);
+  
+  const fileInputRef = useRef(null);
+  const editorRef = useRef(null);
+  
+  const user = JSON.parse(localStorage.getItem('user')) || {};
+  const defaultEmail = user.email || 'admin@gmail.com';
+
+  const [formData, setFormData] = useState({
+    from_email: defaultEmail,
+    recipient: '',
+    subject: ''
+  });
+  const [attachment, setAttachment] = useState(null);
 
   const toggleOpen = () => {
     setIsOpen(!isOpen);
-    setIsMinimized(false);
-  };
-
-  const toggleMinimize = (e) => {
-    e.stopPropagation();
-    setIsMinimized(!isMinimized);
   };
 
   const closeWindow = (e) => {
@@ -21,54 +31,172 @@ const FloatingEmail = () => {
     setIsOpen(false);
   };
 
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif'];
+      if (!allowedTypes.includes(file.type)) {
+        alert("Only PDF and Images are allowed.");
+        return;
+      }
+      setAttachment(file);
+    }
+  };
+
+  const formatText = (command) => {
+    document.execCommand(command, false, null);
+    if (editorRef.current) {
+      editorRef.current.focus();
+    }
+  };
+
+  const sendEmail = async () => {
+    const message = editorRef.current ? editorRef.current.innerHTML : '';
+    
+    if (!formData.recipient || !formData.subject || !message.trim()) {
+      alert("Please fill in all fields.");
+      return;
+    }
+
+    setLoading(true);
+
+    const payload = new FormData();
+    payload.append('from_email', formData.from_email);
+    payload.append('recipient', formData.recipient);
+    payload.append('subject', formData.subject);
+    payload.append('message', message);
+    if (attachment) {
+      payload.append('attachment', attachment);
+    }
+
+    try {
+      const response = await axios.post(`${API_BASE}/send_email.php`, payload, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (response.data.status === 'success') {
+        alert("Email sent successfully!");
+        setIsOpen(false);
+        setFormData({ from_email: defaultEmail, recipient: '', subject: '' });
+        setAttachment(null);
+        if (editorRef.current) editorRef.current.innerHTML = '';
+      } else {
+        alert("Error: " + response.data.message);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("An error occurred while sending the email.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="floating-email-container">
       {isOpen && (
-        <div className={`email-compose-window ${isMinimized ? 'minimized' : ''}`}>
-          <div className="email-header" onClick={toggleMinimize}>
+        <div className="email-compose-window">
+          <div className="email-header">
             <span className="email-title">New Message</span>
             <div className="email-actions">
-              <button className="email-action-btn" onClick={toggleMinimize}>
-                {isMinimized ? '+' : '-'}
-              </button>
               <button className="email-action-btn" onClick={closeWindow}>
                 <X size={16} />
               </button>
             </div>
           </div>
-          
-          {!isMinimized && (
-            <div className="email-body">
-              <div className="email-input-group">
-                <input type="text" placeholder="Recipients" className="email-input" />
+
+          <div className="email-body">
+            <div className="email-input-group" style={{ display: 'flex', alignItems: 'center', padding: '0 16px' }}>
+              <span style={{ color: '#6b7280', fontSize: '0.85rem', marginRight: '8px', minWidth: '40px' }}>From:</span>
+              <select 
+                name="from_email" 
+                className="email-input" 
+                style={{ paddingLeft: '0' }}
+                value={formData.from_email} 
+                onChange={handleInputChange}
+              >
+                <option value={defaultEmail}>{defaultEmail} (Admin)</option>
+                <option value="hr@gmail.com">hr@gmail.com</option>
+                <option value="payroll@gmail.com">payroll@gmail.com</option>
+              </select>
+            </div>
+            <div className="email-input-group">
+              <input 
+                type="email" 
+                name="recipient"
+                placeholder="To (Recipient's Email)" 
+                className="email-input"
+                value={formData.recipient}
+                onChange={handleInputChange}
+              />
+            </div>
+            <div className="email-input-group">
+              <input 
+                type="text" 
+                name="subject"
+                placeholder="Subject" 
+                className="email-input"
+                value={formData.subject}
+                onChange={handleInputChange}
+              />
+            </div>
+            
+            {showFormatting && (
+              <div className="email-formatting-toolbar">
+                <button onClick={() => formatText('bold')} title="Bold"><Bold size={14} /></button>
+                <button onClick={() => formatText('italic')} title="Italic"><Italic size={14} /></button>
+                <button onClick={() => formatText('underline')} title="Underline"><Underline size={14} /></button>
               </div>
-              <div className="email-input-group">
-                <input type="text" placeholder="Subject" className="email-input" />
+            )}
+            
+            <div className="email-textarea-group">
+              <div 
+                className="email-textarea"
+                contentEditable={true}
+                ref={editorRef}
+                style={{ minHeight: '150px', outline: 'none' }}
+                data-placeholder="Description"
+              ></div>
+            </div>
+
+            {attachment && (
+              <div className="email-attachment-preview">
+                <span className="attachment-name">📎 {attachment.name}</span>
+                <button className="attachment-remove-btn" onClick={() => setAttachment(null)}><X size={14}/></button>
               </div>
-              <div className="email-textarea-group">
-                <textarea 
-                  className="email-textarea" 
-                  placeholder="Placeholder for email content..."
-                ></textarea>
-              </div>
-              
-              <div className="email-footer">
-                <button className="email-send-btn">
-                  Send <Send size={14} style={{ marginLeft: '4px' }} />
+            )}
+
+            <div className="email-footer">
+              <button className="email-send-btn" onClick={sendEmail} disabled={loading}>
+                {loading ? 'Sending...' : 'Send'} <Send size={14} style={{ marginLeft: '4px' }} />
+              </button>
+              <div className="email-footer-tools">
+                <input 
+                  type="file" 
+                  accept=".pdf, image/png, image/jpeg, image/gif" 
+                  style={{ display: 'none' }} 
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                />
+                <button className="email-tool-btn" onClick={() => setShowFormatting(!showFormatting)} title="Format Text">
+                  <Type size={16} />
                 </button>
-                <div className="email-footer-tools">
-                  <button className="email-tool-btn"><Type size={16} /></button>
-                  <button className="email-tool-btn"><Paperclip size={16} /></button>
-                </div>
+                <button className="email-tool-btn" onClick={() => fileInputRef.current.click()} title="Attach File">
+                  <Paperclip size={16} />
+                </button>
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
 
       {!isOpen && (
-        <button className="floating-email-btn" onClick={toggleOpen}>
-          <Mail size={24} />
+        <button className="floating-email-btn compose-btn" onClick={toggleOpen}>
+          <Mail size={20} className="compose-icon" />
+          <span className="compose-text">Compose Email</span>
         </button>
       )}
     </div>

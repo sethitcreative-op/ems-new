@@ -7,24 +7,38 @@
 }
 
 .floating-email-btn {
-  background-color: var(--primary);
+  background: linear-gradient(135deg, var(--primary, #3b82f6), #2563eb);
   color: white;
   border: none;
-  border-radius: 16px;
-  width: 56px;
+  border-radius: 28px;
+  padding: 0 24px;
   height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s, background-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.3px;
+  width: auto;
 }
 
 .floating-email-btn:hover {
-  background-color: #2a3eb1;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+}
+
+.floating-email-btn:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+.compose-icon {
+  flex-shrink: 0;
 }
 
 .email-compose-window {
@@ -43,23 +57,19 @@
   right: 0;
 }
 
-.email-compose-window.minimized {
-  height: 40px;
-}
-
 .email-header {
-  background-color: var(--dark);
+  background-color: #1f2937;
   color: white;
-  padding: 10px 16px;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
 }
 
 .email-title {
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
 .email-actions {
@@ -70,18 +80,19 @@
 .email-action-btn {
   background: none;
   border: none;
-  color: #ccc;
+  color: #9ca3af;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
-  font-size: 1.2rem;
-  line-height: 1;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
 }
 
 .email-action-btn:hover {
   color: white;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .email-body {
@@ -106,6 +117,8 @@
 .email-textarea-group {
   flex: 1;
   display: flex;
+  position: relative;
+  overflow-y: auto;
 }
 
 .email-textarea {
@@ -116,6 +129,74 @@
   font-size: 0.9rem;
   resize: none;
   background-color: white;
+  min-height: 150px;
+}
+
+.email-textarea[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.email-formatting-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background-color: #f9fafc;
+}
+
+.email-formatting-toolbar button {
+  background: none;
+  border: 1px solid transparent;
+  color: #4b5563;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.email-formatting-toolbar button:hover {
+  background-color: #e5e7eb;
+  border-color: #d1d5db;
+  color: #111827;
+}
+
+.email-attachment-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: #f3f4f6;
+  border-top: 1px solid var(--border, #e5e7eb);
+  font-size: 0.85rem;
+  color: #374151;
+}
+
+.attachment-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 85%;
+}
+
+.attachment-remove-btn {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.attachment-remove-btn:hover {
+  background-color: #fee2e2;
 }
 
 .email-footer {

@@ -193,10 +193,6 @@ const LeaveTracker = () => {
                   required
                 >
                   <option value="Vacation Leave">Vacation Leave</option>
-                  <option value="Sick Leave">Sick Leave</option>
-                  <option value="Maternity Leave">Maternity Leave</option>
-                  <option value="Paternity Leave">Paternity Leave</option>
-                  <option value="Other">Other</option>
                 </select>
               </div>
               <div style={{ display: 'flex', gap: '15px' }}>

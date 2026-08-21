@@ -10,6 +10,8 @@ export const NotificationProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [toasts, setToasts] = useState([]);
   const lastNotificationRef = useRef({ message: null, time: 0 });
+  const initialLoadDone = useRef(false);
+  const seenNotificationIds = useRef(new Set());
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -106,13 +108,10 @@ export const NotificationProvider = ({ children }) => {
             const newNotifs = data.data;
             const newUnread = newNotifs.filter(n => parseInt(n.is_read) === 0);
             
-            // Check for new unread notifications to show toasts
-            if (prev.length > 0) {
-              const prevIds = new Set(prev.map(p => p.id));
-              const prevMessages = new Set(prev.map(p => p.message)); // Prevent duplicate DB fetch toasts
-              
+            // Check for new unread notifications to show toasts only after initial load
+            if (initialLoadDone.current) {
               newUnread.forEach(n => {
-                if (!prevIds.has(n.id) && !prevMessages.has(n.message)) {
+                if (!seenNotificationIds.current.has(n.id)) {
                   // It's a brand new unread notification
                   const toastId = `db-${n.id}`;
                   setToasts(t => {
@@ -122,8 +121,13 @@ export const NotificationProvider = ({ children }) => {
                     return [...t, { ...n, id: toastId, timestamp: n.created_at }];
                   });
                   setTimeout(() => removeToast(toastId), 4000);
+                  seenNotificationIds.current.add(n.id);
                 }
               });
+            } else {
+              // Initial load, just mark all as seen so we don't toast them later
+              newNotifs.forEach(n => seenNotificationIds.current.add(n.id));
+              initialLoadDone.current = true;
             }
             
             setUnreadCount(newUnread.length);
@@ -143,6 +147,8 @@ export const NotificationProvider = ({ children }) => {
       if (!localStorage.getItem('user')) {
         setNotifications([]);
         setUnreadCount(0);
+        initialLoadDone.current = false;
+        seenNotificationIds.current.clear();
       } else {
         fetchNotifications();
       }

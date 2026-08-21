@@ -6,12 +6,12 @@ require_once '../config/logger.php';
 $data = json_decode(file_get_contents("php://input"));
 
 if(isset($data->action) && $data->action === 'login') {
-    $username = $data->username;
+    $email = $data->email;
     $password = $data->password;
 
-    $query = "SELECT * FROM users WHERE username = :username LIMIT 0,1";
+    $query = "SELECT * FROM users WHERE email = :email LIMIT 0,1";
     $stmt = $conn->prepare($query);
-    $stmt->bindParam(':username', $username);
+    $stmt->bindParam(':email', $email);
     $stmt->execute();
     
     if($stmt->rowCount() > 0) {

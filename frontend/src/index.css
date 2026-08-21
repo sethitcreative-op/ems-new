@@ -243,7 +243,9 @@ input[type="month"].input-field {
 /* Layout */
 .app-container {
   display: flex;
-  height: 100vh;
+  height: 111.111vh;
+  width: 111.111vw;
+  zoom: 0.9;
 }
 
 .main-content {
@@ -359,7 +361,7 @@ input[type="month"].input-field {
     padding: 16px;
     padding-bottom: 90px;
     /* Space for bottom bar */
-    height: 100vh;
+    height: 100%;
   }
 
   .sidebar-header,
@@ -510,8 +512,8 @@ input[type="month"].input-field {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  right: 0;
+  bottom: 0;
   background: var(--bg-gradient);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);

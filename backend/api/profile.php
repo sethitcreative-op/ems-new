@@ -1,6 +1,7 @@
 <?php
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/logger.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -76,6 +77,8 @@ if ($method === 'POST') {
         $fetch_stmt->execute([':id' => $id]);
         $updated_user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
 
+        logAction($conn, $id, 'UPDATE_PROFILE', "User {$username} updated their profile.");
+
         echo json_encode(["status" => "success", "message" => "Profile updated successfully", "user" => $updated_user]);
     } catch(PDOException $e) {
         echo json_encode(["status" => "error", "message" => "Could not update profile", "error" => $e->getMessage()]);
@@ -128,6 +131,8 @@ elseif ($method === 'PUT') {
         $fetch_stmt = $conn->prepare($fetch_query);
         $fetch_stmt->execute([':id' => $id]);
         $updated_user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
+
+        logAction($conn, $id, 'UPDATE_PROFILE', "User {$username} updated their profile.");
 
         echo json_encode(["status" => "success", "message" => "Profile updated successfully", "user" => $updated_user]);
     } catch(PDOException $e) {

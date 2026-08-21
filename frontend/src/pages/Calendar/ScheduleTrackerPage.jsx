@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Calendar as CalendarIcon, User as UserIcon, Search, MoreVertical, Filter, Plus, X, Edit2, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, User as UserIcon, Search, MoreVertical, Filter, Plus, X, Edit2, Trash2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
 
@@ -10,6 +10,13 @@ const ScheduleTrackerPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const user = JSON.parse(localStorage.getItem('user'));
 
   // New Schedule State
@@ -30,7 +37,16 @@ const ScheduleTrackerPage = () => {
   }, []);
 
   useEffect(() => {
-    let filtered = events;
+    let filtered = [...events];
+    
+    // Filter by Month
+    if (selectedMonth) {
+      filtered = filtered.filter(evt => {
+        if (!evt.event_date) return false;
+        return evt.event_date.startsWith(selectedMonth);
+      });
+    }
+
     if (selectedEmployee) {
       filtered = filtered.filter(evt => evt.user_name === selectedEmployee);
     }
@@ -42,10 +58,53 @@ const ScheduleTrackerPage = () => {
         evt.event_type.toLowerCase().includes(lowercasedTerm)
       );
     }
+
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        if (sortConfig.key === 'employee') {
+          return sortConfig.direction === 'asc' 
+            ? a.user_name.localeCompare(b.user_name)
+            : b.user_name.localeCompare(a.user_name);
+        }
+        if (sortConfig.key === 'date') {
+          const dateA = new Date(a.event_date);
+          const dateB = new Date(b.event_date);
+          return sortConfig.direction === 'asc' 
+            ? dateA - dateB
+            : dateB - dateA;
+        }
+        return 0;
+      });
+    }
+
     setFilteredEvents(filtered);
-  }, [searchTerm, selectedEmployee, events]);
+    setCurrentPage(1);
+  }, [searchTerm, selectedEmployee, events, sortConfig, selectedMonth]);
+
+  // Pagination calculations
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredEvents.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  const handleSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
   const uniqueEmployees = [...new Set(events.map(e => e.user_name))];
+
+  const renderProfilePicture = (path) => {
+    if (!path) return null;
+    if (path.startsWith('http') || path.startsWith('data:image')) return path;
+    if (path.startsWith('img/')) return `/${path}`;
+    return `${API_BASE.replace('/api', '')}/${path}`;
+  };
 
   const getStatusBadge = (evt) => {
     switch (evt.status) {
@@ -64,8 +123,12 @@ const ScheduleTrackerPage = () => {
     try {
       const res = await axios.get(`${API_BASE}/calendar.php?role=admin&user_id=${user.id}`);
       if (res.data.status === 'success') {
-        // Only show approved and pending schedules (or all)
-        const allEvents = res.data.data.filter(evt => evt.status !== 'rejected');
+        // Show WS and VL, exclude SL/PDO (managed through separate modules)
+        const allEvents = res.data.data.filter(evt => 
+          evt.status !== 'rejected' && 
+          evt.event_type !== 'SL' && 
+          evt.event_type !== 'PDO'
+        );
         setEvents(allEvents);
         setFilteredEvents(allEvents);
       }
@@ -178,15 +241,33 @@ const ScheduleTrackerPage = () => {
           <p className="page-subtitle" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Track schedules and leave dates for all employees.</p>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '8px 16px', gap: '8px', color: 'var(--text-main)', fontSize: '0.85rem' }}>
-            <span>May 1 - May 31, 2026</span>
-            <CalendarIcon size={14} color="var(--text-muted)" />
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <input 
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={{
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                borderRadius: '8px',
+                padding: '8px 16px',
+                color: 'var(--text-main)',
+                fontSize: '0.85rem',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            />
           </div>
-          
-          <button style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '8px 16px', color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
-            <Filter size={14} />
-            Filters
-          </button>
+          <select
+            value={selectedEmployee}
+            onChange={(e) => setSelectedEmployee(e.target.value)}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+          >
+            <option value="">All Employees</option>
+            {uniqueEmployees.map(emp => (
+              <option key={emp} value={emp}>{emp}</option>
+            ))}
+          </select>
           
           <div style={{ position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
@@ -209,6 +290,73 @@ const ScheduleTrackerPage = () => {
         </div>
       </div>
 
+      {/* Pagination Controls */}
+      {!loading && filteredEvents.length > itemsPerPage && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          <div>
+            Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredEvents.length)} of {filteredEvents.length} entries
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '6px', padding: '6px 12px', color: currentPage === 1 ? 'var(--text-muted)' : 'var(--text-main)', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }}
+            >
+              Previous
+            </button>
+            
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {[...Array(totalPages)].map((_, index) => {
+                const pageNum = index + 1;
+                if (
+                  pageNum === 1 || 
+                  pageNum === totalPages || 
+                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                ) {
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => paginate(pageNum)}
+                      style={{
+                        background: currentPage === pageNum ? 'var(--primary)' : 'var(--card-bg)',
+                        border: '1px solid',
+                        borderColor: currentPage === pageNum ? 'var(--primary)' : 'var(--card-border)',
+                        borderRadius: '6px',
+                        width: '32px',
+                        height: '32px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: currentPage === pageNum ? '#fff' : 'var(--text-main)',
+                        cursor: 'pointer',
+                        fontWeight: currentPage === pageNum ? '600' : '400',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                } else if (
+                  pageNum === currentPage - 2 || 
+                  pageNum === currentPage + 2
+                ) {
+                  return <span key={pageNum} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', color: 'var(--text-muted)' }}>...</span>;
+                }
+                return null;
+              })}
+            </div>
+
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '6px', padding: '6px 12px', color: currentPage === totalPages ? 'var(--text-muted)' : 'var(--text-main)', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="glass table-container">
         {loading ? (
           <div style={{ padding: '2rem', textAlign: 'center' }}>Loading schedules...</div>
@@ -217,8 +365,26 @@ const ScheduleTrackerPage = () => {
             <table className="premium-table">
               <thead>
                 <tr>
-                  <th>Employee</th>
-                  <th>Date</th>
+                  <th onClick={() => handleSort('employee')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Employee
+                      {sortConfig.key === 'employee' ? (
+                        sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      ) : (
+                        <ChevronsUpDown size={14} opacity={0.3} />
+                      )}
+                    </div>
+                  </th>
+                  <th onClick={() => handleSort('date')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      Date
+                      {sortConfig.key === 'date' ? (
+                        sortConfig.direction === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                      ) : (
+                        <ChevronsUpDown size={14} opacity={0.3} />
+                      )}
+                    </div>
+                  </th>
                   <th>Type</th>
                   <th>Title / Description</th>
                   <th>Status</th>
@@ -226,12 +392,24 @@ const ScheduleTrackerPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.length > 0 ? (
-                  filteredEvents.map((evt) => (
+                {currentItems.length > 0 ? (
+                  currentItems.map((evt) => (
                     <tr key={evt.id}>
                       <td style={{ fontWeight: 500, color: 'var(--text-main)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '11px', flexShrink: 0 }}>
+                          {evt.profile_picture ? (
+                            <img 
+                              src={renderProfilePicture(evt.profile_picture)} 
+                              alt={evt.user_name} 
+                              style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} 
+                              onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '11px', flexShrink: 0, display: evt.profile_picture ? 'none' : 'flex' }}>
                             {evt.user_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                           </div>
                           {evt.user_name}
@@ -350,7 +528,6 @@ const ScheduleTrackerPage = () => {
                   >
                     <option value="WS">Work Shift (WS)</option>
                     <option value="VL">Vacation Leave (VL)</option>
-                    <option value="HL">Holiday (HL)</option>
                   </select>
                 </div>
 

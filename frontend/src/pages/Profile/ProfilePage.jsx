@@ -12,6 +12,11 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState('account');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  const [viewMode, setViewMode] = useState(JSON.parse(localStorage.getItem('user'))?.role === 'admin' ? 'team' : 'profile');
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [loadingTeam, setLoadingTeam] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
     full_name: '',
@@ -21,7 +26,29 @@ const ProfilePage = () => {
   const [profilePictureFile, setProfilePictureFile] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
   const { addNotification } = useNotification();
+  
+  // Government IDs State
+  const [governmentIds, setGovernmentIds] = useState([]);
+  const [govIdLoading, setGovIdLoading] = useState(false);
+  const [govIdForm, setGovIdForm] = useState({ id_type: '', id_number: '', file: null });
+  const [govIdUploading, setGovIdUploading] = useState(false);
+
   const location = useLocation();
+
+  useEffect(() => {
+    if (viewMode === 'team' && teamMembers.length === 0) {
+      setLoadingTeam(true);
+      axios.get(`${API_BASE}/employees.php?action=list`)
+        .then(res => {
+          if (res.data.status === 'success') {
+            const admins = res.data.data.filter(emp => emp.role === 'admin');
+            setTeamMembers(admins);
+          }
+        })
+        .catch(err => console.error("Error fetching team", err))
+        .finally(() => setLoadingTeam(false));
+    }
+  }, [viewMode, teamMembers.length]);
 
   useEffect(() => {
     if (location.state?.openEditModal && user?.role === 'admin') {
@@ -131,19 +158,151 @@ const ProfilePage = () => {
     return `${API_BASE.replace('/api', '')}/${pic}`;
   };
 
-  const memberSince = new Date(user.created_at);
+  const displayUser = selectedMember || user;
+  const isViewingOther = !!selectedMember;
+
+  // Fetch Government IDs
+  useEffect(() => {
+    if (displayUser && activeTab === 'government') {
+      setGovIdLoading(true);
+      axios.get(`${API_BASE}/government_ids.php?user_id=${displayUser.id}`)
+        .then(res => {
+          if (res.data.status === 'success') {
+            setGovernmentIds(res.data.data);
+          }
+        })
+        .catch(err => console.error("Error fetching government IDs", err))
+        .finally(() => setGovIdLoading(false));
+    }
+  }, [displayUser, activeTab]);
+
+  const handleGovIdUpload = async (e) => {
+    e.preventDefault();
+    if (!govIdForm.id_type || !govIdForm.id_number || !govIdForm.file) {
+      addNotification({ type: 'warning', message: 'Please fill all fields and select a picture.' });
+      return;
+    }
+    setGovIdUploading(true);
+    const formData = new FormData();
+    formData.append('user_id', user.id);
+    formData.append('id_type', govIdForm.id_type);
+    formData.append('id_number', govIdForm.id_number);
+    formData.append('file', govIdForm.file);
+
+    try {
+      const res = await axios.post(`${API_BASE}/government_ids.php`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Government ID uploaded successfully!' });
+        setGovIdForm({ id_type: '', id_number: '', file: null });
+        // Refresh list
+        const fetchRes = await axios.get(`${API_BASE}/government_ids.php?user_id=${displayUser.id}`);
+        if (fetchRes.data.status === 'success') {
+          setGovernmentIds(fetchRes.data.data);
+        }
+      } else {
+        addNotification({ type: 'error', message: res.data.message });
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to upload Government ID.' });
+    }
+    setGovIdUploading(false);
+  };
+  
+  const handleDeleteGovId = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this Government ID?")) return;
+    try {
+      const res = await axios.delete(`${API_BASE}/government_ids.php?id=${id}`);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Government ID deleted.' });
+        setGovernmentIds(prev => prev.filter(gid => gid.id !== id));
+      } else {
+        addNotification({ type: 'error', message: res.data.message });
+      }
+    } catch (err) {
+      addNotification({ type: 'error', message: 'Failed to delete ID.' });
+    }
+  };
+
+  const memberSince = new Date(displayUser.created_at);
   const daysSince = Math.floor((new Date() - memberSince) / (1000 * 60 * 60 * 24));
 
-  const tabs = [
-    { id: 'account', label: 'Account Details', icon: <User size={16} /> },
-    { id: 'compensation', label: 'Compensation & Contact', icon: <DollarSign size={16} /> },
-    { id: 'government', label: 'Government ID', icon: <Shield size={16} /> },
-    { id: 'schedule', label: 'Schedule', icon: <Calendar size={16} /> },
+  const baseTabs = [
+    { id: 'account', label: 'Account Details', icon: <User size={16} /> }
   ];
+
+  const employeeTabs = [
+    { id: 'government', label: 'Government ID', icon: <Shield size={16} /> }
+  ];
+
+  const tabs = displayUser.role === 'admin' ? baseTabs : [...baseTabs, ...employeeTabs];
 
   return (
     <div className="page-container profile-page">
 
+      {/* ── View Toggle ── */}
+      {!isViewingOther && user?.role === 'admin' && (
+        <div className="profile-view-toggle">
+          <button 
+            className={`toggle-btn ${viewMode === 'profile' ? 'active' : ''}`}
+            onClick={() => setViewMode('profile')}
+          >
+            My Profile
+          </button>
+          <button 
+            className={`toggle-btn ${viewMode === 'team' ? 'active' : ''}`}
+            onClick={() => setViewMode('team')}
+          >
+            My Team
+          </button>
+        </div>
+      )}
+
+      {isViewingOther && (
+        <div className="back-to-team" onClick={() => setSelectedMember(null)}>
+          <button className="back-btn">&larr; Back to Team</button>
+        </div>
+      )}
+
+      {viewMode === 'team' && !selectedMember ? (
+        <div className="team-grid-container animate-panel">
+          <div className="team-grid-header">
+            <h2>Management Team</h2>
+            <p>Select a profile to view details.</p>
+          </div>
+          {loadingTeam ? (
+            <div className="team-loading"><span className="spinner"></span> Loading team...</div>
+          ) : (
+            <div className="team-grid">
+              {teamMembers.map(member => (
+                <div key={member.id} className="team-card" onClick={() => {
+                  if (member.id === user.id) {
+                    setViewMode('profile');
+                    setSelectedMember(null);
+                  } else {
+                    setSelectedMember(member);
+                  }
+                }}>
+                  <div className="team-card-avatar">
+                    {member.profile_picture ? (
+                      <img src={renderProfilePicture(member.profile_picture)} alt={member.full_name} />
+                    ) : (
+                      <span>{member.full_name?.charAt(0) || 'A'}</span>
+                    )}
+                  </div>
+                  <div className="team-card-info">
+                    <h3>{member.full_name}</h3>
+                    <p>@{member.username}</p>
+                    <span className="team-role-badge"><Shield size={12}/> Administrator</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       {/* ── Hero Section ── */}
       <div className="profile-hero">
         <div className="hero-mesh"></div>
@@ -158,10 +317,10 @@ const ProfilePage = () => {
         <div className="hero-content">
           <div className="hero-avatar-ring">
             <div className="hero-avatar">
-              {user.profile_picture ? (
-                <img src={renderProfilePicture(user.profile_picture)} alt="Profile" />
+              {displayUser.profile_picture ? (
+                <img src={renderProfilePicture(displayUser.profile_picture)} alt="Profile" />
               ) : (
-                <span className="hero-avatar-letter">{user.full_name?.charAt(0) || 'U'}</span>
+                <span className="hero-avatar-letter">{displayUser.full_name?.charAt(0) || 'U'}</span>
               )}
             </div>
             <div className="avatar-status-ring">
@@ -170,18 +329,18 @@ const ProfilePage = () => {
           </div>
 
           <div className="hero-info">
-            <h1 className="hero-name">{user.full_name}</h1>
+            <h1 className="hero-name">{displayUser.full_name}</h1>
             <div className="hero-meta">
-              <span className={`hero-role-badge ${user.role}`}>
-                {user.role === 'admin' ? <Shield size={14} /> : <Briefcase size={14} />}
-                {user.role === 'admin' ? 'Administrator' : 'Employee'}
+              <span className={`hero-role-badge ${displayUser.role}`}>
+                {displayUser.role === 'admin' ? <Shield size={14} /> : <Briefcase size={14} />}
+                {displayUser.role === 'admin' ? 'Administrator' : 'Employee'}
               </span>
               <span className="hero-separator">•</span>
-              <span className="hero-handle">@{user.username}</span>
+              <span className="hero-handle">@{displayUser.username}</span>
             </div>
           </div>
 
-          {user.role === 'admin' && (
+          {!isViewingOther && displayUser.role === 'admin' && (
             <button className="edit-profile-btn" onClick={openEditModal}>
               <Edit2 size={16} />
               <span>Edit Profile</span>
@@ -190,47 +349,10 @@ const ProfilePage = () => {
         </div>
       </div>
 
-      {/* ── Quick Stats Strip ── */}
-      <div className="stats-strip">
-        <div className="stat-card">
-          <div className="stat-icon-wrap blue">
-            <TrendingUp size={20} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">${parseFloat(user.hourly_rate || 0).toFixed(2)}</span>
-            <span className="stat-label">Hourly Rate</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon-wrap purple">
-            <Calendar size={20} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{memberSince.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            <span className="stat-label">Member Since</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon-wrap green">
-            <Zap size={20} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{daysSince}d</span>
-            <span className="stat-label">Active Days</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon-wrap amber">
-            <Award size={20} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-value" style={{ textTransform: 'capitalize' }}>{user.role}</span>
-            <span className="stat-label">Access Level</span>
-          </div>
-        </div>
-      </div>
+
 
       {/* ── Tab Navigation ── */}
+      {displayUser.role !== 'admin' && (
       <div className="profile-tab-bar">
         {tabs.map(tab => (
           <button
@@ -243,18 +365,19 @@ const ProfilePage = () => {
           </button>
         ))}
       </div>
+      )}
 
       {/* ── Tab Content ── */}
       <div className="profile-body">
 
-        {activeTab === 'account' && (
+        {(activeTab === 'account' || displayUser.role === 'admin') && (
           <div className="detail-panel animate-panel">
             <div className="panel-header">
               <div className="panel-icon-title">
                 <div className="panel-icon blue"><User size={20} /></div>
                 <div>
-                  <h3>Account Details</h3>
-                  <p className="panel-subtitle">Your identity & login information</p>
+                  <h3>{displayUser.role === 'admin' ? 'Admin Profile' : 'Account Details'}</h3>
+                  <p className="panel-subtitle">{displayUser.role === 'admin' ? 'Identity & contact information' : 'Your identity & login information'}</p>
                 </div>
               </div>
             </div>
@@ -263,21 +386,21 @@ const ProfilePage = () => {
                 <div className="detail-icon"><User size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Username</span>
-                  <span className="detail-value">@{user.username}</span>
+                  <span className="detail-value">@{displayUser.username}</span>
                 </div>
               </div>
               <div className="detail-row">
                 <div className="detail-icon"><Briefcase size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Department Role</span>
-                  <span className="detail-value" style={{ textTransform: 'capitalize' }}>{user.role}</span>
+                  <span className="detail-value" style={{ textTransform: 'capitalize' }}>{displayUser.role}</span>
                 </div>
               </div>
               <div className="detail-row">
                 <div className="detail-icon"><User size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Sex</span>
-                  <span className="detail-value">{user.sex || 'Not specified'}</span>
+                  <span className="detail-value">{displayUser.sex || 'Not specified'}</span>
                 </div>
               </div>
               <div className="detail-row">
@@ -291,56 +414,34 @@ const ProfilePage = () => {
                 <div className="detail-icon"><Hash size={18} /></div>
                 <div className="detail-content">
                   <span className="detail-label">Employee ID</span>
-                  <span className="detail-value">EMP-{String(user.id).padStart(4, '0')}</span>
+                  <span className="detail-value">EMP-{String(displayUser.id).padStart(4, '0')}</span>
+                </div>
+              </div>
+              
+                <div className="detail-row">
+                  <div className="detail-icon"><Mail size={18} /></div>
+                  <div className="detail-content">
+                    <span className="detail-label">Email Address</span>
+                    <span className={`detail-value ${!displayUser.email ? 'muted-val' : ''}`}>{displayUser.email || 'Not specified'}</span>
+                  </div>
+                </div>
+                <div className="detail-row">
+                  <div className="detail-icon"><Phone size={18} /></div>
+                  <div className="detail-content">
+                    <span className="detail-label">Phone Number</span>
+                    <span className={`detail-value ${!displayUser.phone ? 'muted-val' : ''}`}>{displayUser.phone || 'Not specified'}</span>
+                  </div>
+                </div>
+                <div className="detail-row">
+                  <div className="detail-icon"><MapPin size={18} /></div>
+                  <div className="detail-content">
+                    <span className="detail-label">Address</span>
+                    <span className={`detail-value ${!displayUser.address ? 'muted-val' : ''}`}>{displayUser.address || 'Not specified'}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'compensation' && (
-          <div className="detail-panel animate-panel">
-            <div className="panel-header">
-              <div className="panel-icon-title">
-                <div className="panel-icon green"><DollarSign size={20} /></div>
-                <div>
-                  <h3>Compensation & Contact</h3>
-                  <p className="panel-subtitle">Pay rate and contact details</p>
-                </div>
-              </div>
-            </div>
-            <div className="detail-grid">
-              <div className="detail-row highlight-row">
-                <div className="detail-icon success"><DollarSign size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">Hourly Rate</span>
-                  <span className="detail-value success-val">${parseFloat(user.hourly_rate || 0).toFixed(2)} / hr</span>
-                </div>
-              </div>
-              <div className="detail-row">
-                <div className="detail-icon"><Mail size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">Email Address</span>
-                  <span className={`detail-value ${!user.email ? 'muted-val' : ''}`}>{user.email || 'Not specified'}</span>
-                </div>
-              </div>
-              <div className="detail-row">
-                <div className="detail-icon"><Phone size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">Phone Number</span>
-                  <span className={`detail-value ${!user.phone ? 'muted-val' : ''}`}>{user.phone || 'Not specified'}</span>
-                </div>
-              </div>
-              <div className="detail-row">
-                <div className="detail-icon"><MapPin size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">Address</span>
-                  <span className={`detail-value ${!user.address ? 'muted-val' : ''}`}>{user.address || 'Not specified'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          )}
 
         {activeTab === 'government' && (
           <div className="detail-panel animate-panel">
@@ -353,41 +454,60 @@ const ProfilePage = () => {
                 </div>
               </div>
             </div>
-            <div className="detail-grid">
-              <div className="detail-row">
-                <div className="detail-icon"><Shield size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">ID Number</span>
-                  <span className={`detail-value ${!user.id_number ? 'muted-val' : ''}`}>{user.id_number || 'Not specified'}</span>
+            
+            <div className="detail-content-wrap" style={{ padding: '20px' }}>
+              <div className="primary-id-section" style={{ marginBottom: '30px', padding: '20px', background: 'var(--surface-color)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <h4 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'var(--text-color)' }}>Primary Government ID</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Number</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: '500' }}>{displayUser.id_number || 'Not provided'}</span>
                 </div>
               </div>
+
+              <h4 style={{ marginBottom: '16px', fontSize: '15px', color: 'var(--text-color)' }}>Uploaded IDs</h4>
+              {govIdLoading ? (
+                <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)' }}>Loading IDs...</div>
+              ) : governmentIds.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px', background: 'var(--surface-color)', borderRadius: '12px', color: 'var(--text-secondary)', border: '1px dashed var(--border-color)' }}>
+                  No Government IDs found.
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
+                  {governmentIds.map(idRec => (
+                    <div key={idRec.id} style={{ background: 'var(--surface-color)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Shield size={18} style={{ color: 'var(--primary-color)' }} />
+                          <span style={{ fontWeight: '500', color: 'var(--text-color)' }}>{idRec.id_type}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Number</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{idRec.id_number}</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Uploaded</span>
+                        <span style={{ fontSize: '13px' }}>{new Date(idRec.uploaded_at).toLocaleDateString()}</span>
+                      </div>
+                      <a 
+                        href={`${API_BASE.replace('/api', '')}/${idRec.file_path}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        style={{ marginTop: 'auto', background: 'var(--bg-color)', color: 'var(--primary-color)', padding: '8px', borderRadius: '8px', textAlign: 'center', textDecoration: 'none', fontSize: '13px', fontWeight: '500' }}
+                      >
+                        View Document
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
 
-        {activeTab === 'schedule' && (
-          <div className="detail-panel animate-panel">
-            <div className="panel-header">
-              <div className="panel-icon-title">
-                <div className="panel-icon amber"><Calendar size={20} /></div>
-                <div>
-                  <h3>Schedule Information</h3>
-                  <p className="panel-subtitle">Your assigned work schedule</p>
-                </div>
-              </div>
-            </div>
-            <div className="detail-grid">
-              <div className="detail-row">
-                <div className="detail-icon"><Clock size={18} /></div>
-                <div className="detail-content">
-                  <span className="detail-label">Working Hours</span>
-                  <span className="detail-value">Standard Schedule (Mon – Fri)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+      </>
+      )}
 
       {/* ── Edit Modal ── */}
       {showEditModal && (

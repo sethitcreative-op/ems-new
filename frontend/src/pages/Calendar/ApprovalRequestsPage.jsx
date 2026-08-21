@@ -97,7 +97,8 @@ const ApprovalRequestsPage = () => {
           <table className="premium-table">
             <thead>
               <tr>
-                <th>Date Requested</th>
+                <th>Submitted On</th>
+                <th>Schedule Date</th>
                 <th>Employee</th>
                 <th>Type</th>
                 <th>Title / Description</th>
@@ -112,6 +113,14 @@ const ApprovalRequestsPage = () => {
                     const [year, month, day] = dateStr.split('-');
                     return `${parseInt(month, 10)}/${parseInt(day, 10)}/${year}`;
                   };
+                  
+                  const formatSubmittedDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    // Convert from ISO or SQL timestamp to a readable format
+                    const d = new Date(dateStr);
+                    if (isNaN(d.getTime())) return dateStr;
+                    return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+                  };
 
                   const startDateStr = formatLocalDate(req.start_date);
                   const endDateStr = formatLocalDate(req.end_date);
@@ -121,7 +130,10 @@ const ApprovalRequestsPage = () => {
 
                   return (
                     <tr key={index}>
-                      <td>{dateDisplay}</td>
+                      <td style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                        {formatSubmittedDate(req.created_at)}
+                      </td>
+                      <td style={{ fontWeight: 500 }}>{dateDisplay}</td>
                       <td style={{ fontWeight: 600 }}>{req.user_name}</td>
                       <td>
                         <span className={`event-badge event-type-${req.event_type}`}>
@@ -164,7 +176,7 @@ const ApprovalRequestsPage = () => {
                 })
               ) : (
                 <tr>
-                  <td colSpan="5" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                     No pending approval requests.
                   </td>
                 </tr>
