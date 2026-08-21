@@ -14,6 +14,8 @@ if ($method === 'GET') {
         user_id INT,
         action VARCHAR(50) NOT NULL,
         description TEXT,
+        ip_address VARCHAR(45) NULL,
+        user_agent TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )";

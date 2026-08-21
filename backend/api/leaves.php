@@ -65,6 +65,9 @@ elseif ($method === 'POST') {
             ':total_days' => $total_days,
             ':reason' => $reason
         ]);
+        
+        logAction($conn, $user_id, 'SUBMIT_LEAVE', "Employee successfully submitted a {$leave_type} request for {$total_days} days (From {$start_date} to {$end_date}).");
+        
         echo json_encode(["status" => "success", "message" => "Leave request submitted successfully"]);
     } catch (PDOException $e) {
         echo json_encode(["status" => "error", "message" => $e->getMessage()]);
@@ -104,6 +107,12 @@ elseif ($method === 'PUT') {
             }
             
             $conn->commit();
+            
+            // Log Action for the admin who updated it.
+            // Ideally we'd get admin_id from the request, but if not we can use user_id or a general log.
+            $admin_id = $data->admin_id ?? 0;
+            logAction($conn, $admin_id, 'UPDATE_LEAVE', "Administrator updated leave request ID {$id} to status '{$status}'.");
+
             echo json_encode(["status" => "success", "message" => "Leave request updated"]);
         } catch (PDOException $e) {
             $conn->rollBack();
@@ -127,6 +136,10 @@ elseif ($method === 'PUT') {
                 ':total_days' => $total_days,
                 ':year' => $year
             ]);
+            
+            $admin_id = $data->admin_id ?? 0;
+            logAction($conn, $admin_id, 'UPDATE_BALANCE', "Administrator updated the {$leave_type} balance for year {$year} to {$total_days} days.");
+
             echo json_encode(["status" => "success", "message" => "Leave balance updated"]);
         } catch (PDOException $e) {
             echo json_encode(["status" => "error", "message" => $e->getMessage()]);

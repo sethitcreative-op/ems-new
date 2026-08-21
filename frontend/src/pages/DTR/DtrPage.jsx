@@ -729,40 +729,27 @@ const DtrPage = () => {
     const tableColumn = [];
     const dataKeys = [];
 
-    if (exportType === 'monthly' || exportType === 'yearly') {
-      if (pdfColumns.name) { tableColumn.push("NAME"); dataKeys.push("full_name"); }
-      if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
-      if (pdfColumns.rate) { tableColumn.push("TOTAL RATE"); dataKeys.push("hourly_rate"); }
-    } else {
-      tableColumn.push("DATE");
-      dataKeys.push("date");
-      if (pdfColumns.name) { tableColumn.push("NAME"); dataKeys.push("full_name"); }
-      if (pdfColumns.amIn) { tableColumn.push("AM IN"); dataKeys.push("am_in"); }
-      if (pdfColumns.pmOut) { tableColumn.push("PM OUT"); dataKeys.push("pm_out"); }
-      if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
-      if (pdfColumns.rate) { tableColumn.push("TOTAL RATE"); dataKeys.push("hourly_rate"); }
-      if (pdfColumns.earnings) { tableColumn.push("EARNINGS"); dataKeys.push("earnings"); }
-    }
+    if (pdfColumns.name) { tableColumn.push("NAME"); dataKeys.push("full_name"); }
+    if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
+    if (pdfColumns.rate) { tableColumn.push("TOTAL RATE"); dataKeys.push("hourly_rate"); }
+    if (pdfColumns.earnings) { tableColumn.push("EARNINGS"); dataKeys.push("earnings"); }
 
-    let recordsToProcess = currentRecords;
-    if (exportType === 'monthly' || exportType === 'yearly') {
-      const grouped = {};
-      currentRecords.forEach(r => {
-        const uid = r.user_id;
-        if (!grouped[uid]) {
-          grouped[uid] = { 
-            ...r, 
-            total_hours: 0, 
-            status: 'Present',
-            full_name: r.full_name || employees.find(e => e.id == uid)?.full_name || user.full_name
-          };
-        }
-        if (r.status !== 'Absent') {
-          grouped[uid].total_hours += parseFloat(r.total_hours || 0);
-        }
-      });
-      recordsToProcess = Object.values(grouped);
-    }
+    const grouped = {};
+    currentRecords.forEach(r => {
+      const uid = r.user_id;
+      if (!grouped[uid]) {
+        grouped[uid] = { 
+          ...r, 
+          total_hours: 0, 
+          status: 'Present',
+          full_name: r.full_name || employees.find(e => e.id == uid)?.full_name || user.full_name
+        };
+      }
+      if (r.status !== 'Absent') {
+        grouped[uid].total_hours += parseFloat(r.total_hours || 0);
+      }
+    });
+    let recordsToProcess = Object.values(grouped);
 
     let grandTotalHrs = 0;
     let grandTotalEarnings = 0;
@@ -789,7 +776,7 @@ const DtrPage = () => {
         if (key === 'am_in') rowData.push(isSpecialStatus ? '---' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
         if (key === 'pm_out') rowData.push(isSpecialStatus ? '---' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
         if (key === 'total_hours') rowData.push(isSpecialStatus ? '---' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
-        if (key === 'hourly_rate') rowData.push(isSpecialStatus ? '' : `$${recordEarnings.toFixed(2)}`);
+        if (key === 'hourly_rate') rowData.push(isSpecialStatus ? '' : `$${recordRate.toFixed(2)}`);
         if (key === 'earnings') {
           rowData.push(isSpecialStatus ? '' : `$${recordEarnings.toFixed(2)}`);
         }

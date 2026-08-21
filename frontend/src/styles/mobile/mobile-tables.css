@@ -1,0 +1,86 @@
+/* 
+   MOBILE TABLES STYLES
+   Converts standard .premium-table into a card-based layout on mobile.
+*/
+
+@media (max-width: 768px) {
+  .premium-table, .mgmt-table, .logs-table {
+    display: block;
+    width: 100%;
+    border: none;
+  }
+  
+  .premium-table thead, .mgmt-table thead, .logs-table thead {
+    display: none; /* Hide standard headers */
+  }
+  
+  .premium-table tbody, .mgmt-table tbody, .logs-table tbody {
+    display: block;
+    width: 100%;
+  }
+  
+  .premium-table tr, .mgmt-table tr, .logs-table tr {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 16px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  }
+  
+  .premium-table td, .mgmt-table td, .logs-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 10px 4px;
+    text-align: right; /* Value goes to the right */
+    background: transparent;
+  }
+  
+  [data-theme="light"] .premium-table td, [data-theme="light"] .mgmt-table td, [data-theme="light"] .logs-table td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  .premium-table td:last-child, .mgmt-table td:last-child, .logs-table td:last-child {
+    border-bottom: none;
+  }
+  
+  /* Inject the column header as a label using the data-label attribute */
+  .premium-table td::before, .mgmt-table td::before, .logs-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    color: var(--table-header-text);
+    text-align: left;
+    flex: 1;
+    padding-right: 16px;
+  }
+  
+  /* Adjust actions cell */
+  .premium-table td.actions-cell, .mgmt-table td.actions-cell, .logs-table td.actions-cell {
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px dashed var(--card-border);
+    margin-top: 8px;
+    padding-top: 12px;
+  }
+  
+  .premium-table td.actions-cell::before, .mgmt-table td.actions-cell::before, .logs-table td.actions-cell::before {
+    display: none; /* Hide label for actions */
+  }
+
+  /* Make employee avatars row stand out */
+  .premium-table td.employee-info-cell, .mgmt-table td.employee-info-cell {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .premium-table td.employee-info-cell::before, .mgmt-table td.employee-info-cell::before {
+    display: none;
+  }
+}

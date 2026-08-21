@@ -1,6 +1,7 @@
 <?php
 require_once '../config/cors.php';
 require_once '../config/database.php';
+require_once '../config/logger.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 
@@ -52,9 +53,12 @@ elseif ($method === 'POST') {
     // Create unique filename
     $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
     $filename = uniqid('govid_') . '_' . time() . '.' . $extension;
-    $uploadDir = __DIR__ . '/../uploads/gov_ids/';
+    // Determine upload directory based on environment (local vs production)
+    $localDir = __DIR__ . '/../../frontend/public/img/gov_ids/';
+    $prodDir = __DIR__ . '/../../img/gov_ids/';
+    $uploadDir = is_dir(__DIR__ . '/../../frontend') ? $localDir : $prodDir;
     
-    // Ensure directory exists (database.php already does this, but good practice)
+    // Ensure directory exists
     if (!file_exists($uploadDir)) {
         mkdir($uploadDir, 0777, true);
     }
@@ -62,7 +66,7 @@ elseif ($method === 'POST') {
     $destination = $uploadDir . $filename;
     
     if (move_uploaded_file($file['tmp_name'], $destination)) {
-        $file_path = 'uploads/gov_ids/' . $filename;
+        $file_path = 'img/gov_ids/' . $filename;
         
         $query = "INSERT INTO government_ids (user_id, id_type, id_number, file_path) VALUES (:user_id, :id_type, :id_number, :file_path)";
         $stmt = $conn->prepare($query);
@@ -78,12 +82,7 @@ elseif ($method === 'POST') {
             $insertedId = $conn->lastInsertId();
             
             // Log action
-            $logQuery = "INSERT INTO system_logs (user_id, action, description) VALUES (:uid, 'UPLOAD_GOV_ID', :desc)";
-            $logStmt = $conn->prepare($logQuery);
-            $logStmt->execute([
-                ':uid' => $user_id,
-                ':desc' => "Uploaded a new $id_type"
-            ]);
+            logAction($conn, $user_id, 'UPLOAD_GOV_ID', "Employee successfully uploaded a new government ID document ({$id_type} - Number: {$id_number}).");
             
             respond('success', 'Government ID uploaded successfully', ['id' => $insertedId, 'file_path' => $file_path]);
         } catch(PDOException $e) {
@@ -104,14 +103,20 @@ elseif ($method === 'DELETE') {
         respond('error', 'ID is required');
     }
     
-    // Get file path first
-    $query = "SELECT file_path FROM government_ids WHERE id = :id";
+    // Get file path and details first
+    $query = "SELECT file_path, user_id, id_type FROM government_ids WHERE id = :id";
     $stmt = $conn->prepare($query);
     $stmt->execute([':id' => $id]);
     $record = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if ($record) {
-        $fullPath = __DIR__ . '/../' . $record['file_path'];
+        if (strpos($record['file_path'], 'img/') === 0) {
+            $localPath = __DIR__ . '/../../frontend/public/' . $record['file_path'];
+            $prodPath = __DIR__ . '/../../' . $record['file_path'];
+            $fullPath = is_dir(__DIR__ . '/../../frontend') ? $localPath : $prodPath;
+        } else {
+            $fullPath = __DIR__ . '/../' . $record['file_path'];
+        }
         
         $delQuery = "DELETE FROM government_ids WHERE id = :id";
         $delStmt = $conn->prepare($delQuery);
@@ -124,6 +129,9 @@ elseif ($method === 'DELETE') {
                 unlink($fullPath);
             }
             
+            // Log action
+            logAction($conn, $record['user_id'], 'DELETE_GOV_ID', "Employee deleted their uploaded government ID document ({$record['id_type']}).");
+
             respond('success', 'Government ID deleted successfully');
         } catch(PDOException $e) {
             respond('error', 'Database error: ' . $e->getMessage());

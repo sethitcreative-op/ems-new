@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS system_logs (
     user_id INT,
     action VARCHAR(50) NOT NULL,
     description TEXT,
+    ip_address VARCHAR(45) NULL,
+    user_agent TEXT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
@@ -103,3 +105,13 @@ CREATE TABLE IF NOT EXISTS leave_requests (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS government_ids (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        id_type VARCHAR(100) NOT NULL,
+        id_number VARCHAR(100) NOT NULL,
+        file_path VARCHAR(255) NOT NULL,
+        status ENUM('verified', 'pending') DEFAULT 'pending',
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

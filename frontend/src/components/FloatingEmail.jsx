@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Mail, X, Send, Paperclip, Type, Bold, Italic, Underline } from 'lucide-react';
 import axios from 'axios';
 import './FloatingEmail.css';
@@ -21,6 +21,29 @@ const FloatingEmail = () => {
     subject: ''
   });
   const [attachment, setAttachment] = useState(null);
+  const [senderEmails, setSenderEmails] = useState([]);
+
+  useEffect(() => {
+    const fetchSenders = async () => {
+      try {
+        const response = await axios.get(`${API_BASE}/mailer.php`);
+        if (response.data.status === 'success' && response.data.emails) {
+          setSenderEmails(response.data.emails);
+          if (response.data.emails.length > 0) {
+            // If the logged-in admin's email is in the list, auto-select it. Otherwise pick the first one.
+            if (response.data.emails.includes(defaultEmail)) {
+              setFormData(prev => ({ ...prev, from_email: defaultEmail }));
+            } else {
+              setFormData(prev => ({ ...prev, from_email: response.data.emails[0] }));
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching sender emails:", error);
+      }
+    };
+    fetchSenders();
+  }, [defaultEmail]);
 
   const toggleOpen = () => {
     setIsOpen(!isOpen);
@@ -74,7 +97,7 @@ const FloatingEmail = () => {
     }
 
     try {
-      const response = await axios.post(`${API_BASE}/send_email.php`, payload, {
+      const response = await axios.post(`${API_BASE}/mailer.php`, payload, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
@@ -94,6 +117,10 @@ const FloatingEmail = () => {
       setLoading(false);
     }
   };
+
+  if (user.role !== 'admin') {
+    return null;
+  }
 
   return (
     <div className="floating-email-container">
@@ -118,9 +145,13 @@ const FloatingEmail = () => {
                 value={formData.from_email} 
                 onChange={handleInputChange}
               >
-                <option value={defaultEmail}>{defaultEmail} (Admin)</option>
-                <option value="hr@gmail.com">hr@gmail.com</option>
-                <option value="payroll@gmail.com">payroll@gmail.com</option>
+                {senderEmails.length > 0 ? (
+                  senderEmails.map((email, idx) => (
+                    <option key={idx} value={email}>{email}</option>
+                  ))
+                ) : (
+                  <option value={defaultEmail}>{defaultEmail}</option>
+                )}
               </select>
             </div>
             <div className="email-input-group">

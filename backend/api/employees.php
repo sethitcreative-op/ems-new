@@ -8,7 +8,10 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 // Function to handle image upload
 function uploadProfilePicture($file) {
-    $target_dir = "../../frontend/public/img/profiles/";
+    // Determine upload directory based on environment (local vs production)
+    $localDir = "../../frontend/public/img/profiles/";
+    $prodDir = "../../img/profiles/";
+    $target_dir = is_dir("../../frontend") ? $localDir : $prodDir;
     if (!file_exists($target_dir)) {
         mkdir($target_dir, 0777, true);
     }
@@ -93,7 +96,7 @@ elseif ($method === 'POST') {
         $stmt = $conn->prepare($query);
         try {
             $stmt->execute($params);
-            logAction($conn, $id, 'UPDATE_EMPLOYEE', "Employee {$username} updated.");
+            logAction($conn, $id, 'UPDATE_EMPLOYEE', "Administrator updated the employee record for {$full_name} (Username: {$username}, Role: {$role}).");
             echo json_encode(["status" => "success", "message" => "Employee updated successfully", "profile_picture" => $profile_picture]);
         } catch(PDOException $e) {
             echo json_encode(["status" => "error", "message" => "Could not update employee", "error" => $e->getMessage()]);
@@ -107,7 +110,7 @@ elseif ($method === 'POST') {
         try {
             $stmt->execute([':username'=>$username, ':pass'=>$password_hash, ':role'=>$role, ':name'=>$full_name, ':rate'=>$hourly_rate, ':pic'=>$profile_picture, ':email'=>$email, ':phone'=>$phone, ':address'=>$address, ':id_number'=>$id_number, ':sex'=>$sex]);
             $new_id = $conn->lastInsertId();
-            logAction($conn, $new_id, 'CREATE_EMPLOYEE', "Employee {$username} created.");
+            logAction($conn, $new_id, 'CREATE_EMPLOYEE', "Administrator created a new employee record for {$full_name} (Username: {$username}, Role: {$role}).");
             echo json_encode(["status" => "success", "message" => "Employee created successfully", "profile_picture" => $profile_picture]);
         } catch(PDOException $e) {
             echo json_encode(["status" => "error", "message" => "Could not create employee", "error" => $e->getMessage()]);
@@ -120,7 +123,7 @@ elseif ($method === 'DELETE') {
         $query = "DELETE FROM users WHERE id = :id";
         $stmt = $conn->prepare($query);
         $stmt->execute([':id' => $id]);
-        logAction($conn, $id, 'DELETE_EMPLOYEE', "Employee ID {$id} deleted.");
+        logAction($conn, $id, 'DELETE_EMPLOYEE', "Administrator deleted the employee record with ID {$id}.");
         echo json_encode(["status" => "success", "message" => "Employee deleted"]);
     }
 }
@@ -147,7 +150,7 @@ elseif ($method === 'PUT') {
         $stmt = $conn->prepare($query);
         try {
             $stmt->execute($params);
-            logAction($conn, $id, 'UPDATE_EMPLOYEE', "Employee {$username} updated.");
+            logAction($conn, $id, 'UPDATE_EMPLOYEE', "Administrator updated the employee record for {$full_name} (Username: {$username}, Role: {$role}).");
             echo json_encode(["status" => "success", "message" => "Employee updated successfully"]);
         } catch(PDOException $e) {
             echo json_encode(["status" => "error", "message" => "Could not update employee", "error" => $e->getMessage()]);

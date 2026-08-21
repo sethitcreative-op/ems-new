@@ -22,19 +22,7 @@ $port = 3306;
 try {
     $conn = new PDO("mysql:host={$host};port={$port};dbname={$db_name}", $username, $password);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-    // Auto-create government_ids table
-    $query = "CREATE TABLE IF NOT EXISTS government_ids (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        id_type VARCHAR(100) NOT NULL,
-        id_number VARCHAR(100) NOT NULL,
-        file_path VARCHAR(255) NOT NULL,
-        status ENUM('verified', 'pending') DEFAULT 'pending',
-        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )";
-    $conn->exec($query);
+   
 
     // Ensure uploads directory exists
     $uploadDir = __DIR__ . '/../uploads/gov_ids';

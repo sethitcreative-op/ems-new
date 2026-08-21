@@ -19,7 +19,7 @@ if ($action === 'clock_in') {
               ON DUPLICATE KEY UPDATE am_in = IF(am_in IS NULL, VALUES(am_in), am_in), status = 'Present'";
     $stmt = $conn->prepare($query);
     $stmt->execute([':user_id' => $user_id, ':server_date' => $server_date, ':server_datetime' => $server_datetime]);
-    logAction($conn, $user_id, 'DTR_CLOCK_IN', "Clocked in at {$server_datetime}");
+    logAction($conn, $user_id, 'DTR_CLOCK_IN', "Employee successfully clocked in for their shift at {$server_datetime}.");
     echo json_encode(["status" => "success", "message" => "Clocked in successfully"]);
     
 } elseif ($action === 'clock_out') {
@@ -56,7 +56,7 @@ if ($action === 'clock_in') {
             ':earnings' => $earnings,
             ':id' => $record['id']
         ]);
-        logAction($conn, $user_id, 'DTR_CLOCK_OUT', "Clocked out at {$server_datetime} (Hours: {$total_hours})");
+        logAction($conn, $user_id, 'DTR_CLOCK_OUT', "Employee successfully clocked out for their shift at {$server_datetime} (Total Hours Logged: {$total_hours}).");
         echo json_encode(["status" => "success", "message" => "Clocked out successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "No Active Shift found."]);

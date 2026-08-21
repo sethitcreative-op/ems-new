@@ -1,0 +1,77 @@
+/* 
+   MOBILE PAGES STYLES
+   Page-specific overrides for mobile.
+*/
+
+@media (max-width: 768px) {
+  /* ================================
+     Employee Management
+     ================================ */
+  .filters-section {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  
+  .search-bar {
+    width: 100% !important;
+  }
+  
+  .filter-group {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  /* ================================
+     Profile Page
+     ================================ */
+  .profile-header {
+    flex-direction: column !important;
+    text-align: center !important;
+    align-items: center !important;
+  }
+  
+  .profile-info {
+    align-items: center !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .leave-balances-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ================================
+     Calendar Page
+     ================================ */
+  .calendar-grid {
+    overflow-x: auto !important;
+    /* Allows swiping left/right on the calendar if it's too wide */
+  }
+
+  .calendar-day {
+    min-height: 80px !important;
+  }
+
+  .calendar-day-header {
+    font-size: 0.8rem !important;
+  }
+  
+  .event-badge {
+    font-size: 0.65rem !important;
+    padding: 2px 4px !important;
+  }
+  
+  /* ================================
+     DTR Page
+     ================================ */
+  .dtr-controls {
+    flex-direction: column !important;
+  }
+  
+  .dtr-summary-cards {
+    grid-template-columns: 1fr !important;
+  }
+}

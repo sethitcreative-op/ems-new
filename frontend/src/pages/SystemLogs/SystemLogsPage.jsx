@@ -101,26 +101,35 @@ const SystemLogsPage = () => {
                   <th>User</th>
                   <th>Action</th>
                   <th>Description</th>
+                  <th>Device Logs</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredLogs.map(log => (
                   <tr key={log.id} className="log-row fade-in">
-                    <td className="time-cell">
+                    <td data-label="Timestamp" className="time-cell">
                       {new Date(log.created_at).toLocaleString(undefined, {
                         year: 'numeric', month: 'short', day: 'numeric',
                         hour: '2-digit', minute: '2-digit', second: '2-digit'
                       })}
                     </td>
-                    <td className="user-cell">
+                    <td data-label="User" className="user-cell">
                       {log.user_name || 'System / Unknown'}
                     </td>
-                    <td className="action-cell">
+                    <td data-label="Action" className="action-cell">
                       <span className={`action-badge ${getActionColor(log.action)}`}>
                         {log.action.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td className="desc-cell">{log.description}</td>
+                    <td data-label="Description" className="desc-cell">{log.description}</td>
+                    <td data-label="Device Logs" className="device-cell">
+                      <div className="device-info" style={{ fontSize: '0.85em', color: 'var(--text-secondary)' }}>
+                        <div><strong>IP:</strong> {log.ip_address || 'N/A'}</div>
+                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }} title={log.user_agent}>
+                          <strong>Device:</strong> {log.user_agent || 'N/A'}
+                        </div>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

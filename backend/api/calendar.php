@@ -137,7 +137,7 @@ elseif ($method === 'POST') {
         ]);
         
         if ($is_admin_assigning) {
-            logAction($conn, $user_id, 'ASSIGN_SCHEDULE', "Admin assigned {$event_type} for {$event_date}.");
+            logAction($conn, $user_id, 'ASSIGN_SCHEDULE', "Administrator successfully assigned a new {$event_type} schedule for the date {$event_date}.");
             $notif_message = "Admin has assigned a new {$event_type} for " . date('M d, Y', strtotime($event_date)) . ".";
             $notif_stmt = $conn->prepare("INSERT INTO notifications (user_id, type, message) VALUES (:user_id, 'info', :message)");
             $notif_stmt->execute([
@@ -145,7 +145,7 @@ elseif ($method === 'POST') {
                 ':message' => $notif_message
             ]);
         } else {
-            logAction($conn, $user_id, 'SUBMIT_REQUEST', "Submitted {$event_type} request for {$event_date}.");
+            logAction($conn, $user_id, 'SUBMIT_REQUEST', "Employee successfully submitted a new request for {$event_type} on the date {$event_date}.");
         }
         
         echo json_encode(["status" => "success", "message" => "Event created successfully"]);
@@ -266,7 +266,7 @@ elseif ($method === 'PUT') {
                 $conn->prepare("DELETE FROM events WHERE id = :id")->execute([':id' => $event_id]);
                 
                 $admin_id = isset($data->admin_id) ? $data->admin_id : 0; 
-                logAction($conn, $admin_id, 'APPROVE_RESCHEDULE', "Approved reschedule request. Applied to original event {$event['reschedule_for_event_id']}.");
+                logAction($conn, $admin_id, 'APPROVE_RESCHEDULE', "Administrator approved the reschedule request, which was applied to the original calendar event ID {$event['reschedule_for_event_id']}.");
                 
                 $notif_message = "Your reschedule request \"{$event['title']}\" was approved and applied.";
                 $notif_stmt = $conn->prepare("INSERT INTO notifications (user_id, type, message) VALUES (:user_id, 'success', :message)");
@@ -309,7 +309,7 @@ elseif ($method === 'PUT') {
             }
 
             $admin_id = isset($data->admin_id) ? $data->admin_id : 0; 
-            logAction($conn, $admin_id, 'UPDATE_REQUEST', "Updated request ID {$event_id} status to {$status}.");
+            logAction($conn, $admin_id, 'UPDATE_REQUEST', "Administrator updated the status of the calendar request (Event ID: {$event_id}) to: {$status}.");
             
             if ($event) {
                 $notif_type = $status === 'approved' ? 'success' : 'error';
@@ -379,7 +379,7 @@ elseif ($method === 'DELETE') {
             }
         }
 
-        logAction($conn, $user_id, 'CANCEL_REQUEST', "Deleted request ID {$event_id}.");
+        logAction($conn, $user_id, 'CANCEL_REQUEST', "User cancelled and deleted their calendar request (Event ID: {$event_id}).");
         echo json_encode(["status" => "success", "message" => "Request cancelled successfully"]);
     } catch(PDOException $e) {
         echo json_encode(["status" => "error", "message" => "Could not cancel request"]);

@@ -1,0 +1,9 @@
+/* 
+   MOBILE STYLES ENTRY POINT
+   Imports all modular mobile styles.
+   These styles strictly apply to @media (max-width: 768px).
+*/
+
+@import './mobile-global.css';
+@import './mobile-tables.css';
+@import './mobile-pages.css';

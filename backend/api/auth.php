@@ -26,7 +26,7 @@ if(isset($data->action) && $data->action === 'login') {
             ]));
             
             // Log the login action
-            logAction($conn, $row['id'], 'LOGIN', "User logged in successfully.");
+            logAction($conn, $row['id'], 'LOGIN', "User {$row['full_name']} (Username: {$row['username']}, Role: {$row['role']}) successfully logged into the system.");
             
             echo json_encode(["status" => "success", "token" => $token, "user" => $row]);
         } else {

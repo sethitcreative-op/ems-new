@@ -13,9 +13,10 @@ const backgroundImages = [
 ];
 
 const Login = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(localStorage.getItem('rememberedEmail') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('rememberedEmail'));
   const [error, setError] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -46,6 +47,13 @@ const Login = () => {
       if (response.data && response.data.status === 'success') {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
+        
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', email);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+
         navigate('/dtr');
       } else {
         setError(response.data?.message || 'Invalid response from server. Check backend connection.');
@@ -154,7 +162,11 @@ const Login = () => {
 
             <div className="form-actions">
               <label className="remember-me">
-                <input type="checkbox" />
+                <input 
+                  type="checkbox" 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
                 <span>Remember me</span>
               </label>
               <a href="#" className="forgot-password" onClick={(e) => e.preventDefault()}>Forgot password?</a>

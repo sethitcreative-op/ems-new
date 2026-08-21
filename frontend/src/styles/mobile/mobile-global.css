@@ -1,0 +1,130 @@
+/* 
+   MOBILE GLOBAL STYLES
+   These styles apply ONLY on screens smaller than 768px.
+   They override the default desktop styles in index.css.
+*/
+
+@media (max-width: 768px) {
+  /* Layout overrides */
+  .app-container {
+    zoom: 1 !important; /* Remove zoom hack on mobile */
+    flex-direction: column !important;
+  }
+
+  .main-content {
+    padding: 12px !important;
+    padding-bottom: 90px !important; /* Space for bottom nav */
+  }
+
+  /* Header Fixes for Mobile */
+  .header-date-section,
+  .header-divider,
+  .us-time-badge,
+  .profile-info-trigger {
+    display: none !important;
+  }
+  
+  .global-header {
+    padding: 12px 16px !important;
+    margin: -12px -12px 16px -12px !important;
+    top: -12px !important;
+  }
+  
+  .header-left-widget {
+    padding: 6px 12px !important;
+  }
+
+  /* Fix Floating Email overlapping bottom nav */
+  .floating-email-container {
+    bottom: 80px !important; /* Move above bottom nav */
+    right: 16px !important;
+  }
+  
+  .floating-email-btn span {
+    display: none !important; /* Hide 'Compose Email' text to make it a circle button */
+  }
+  
+  .floating-email-btn {
+    width: 56px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    justify-content: center !important;
+  }
+
+  /* Make bottom nav scrollable horizontally because there are no icons */
+  .sidebar {
+    overflow-x: auto !important;
+    justify-content: flex-start !important;
+  }
+  
+  .sidebar::-webkit-scrollbar {
+    display: none; /* Hide scrollbar for clean look */
+  }
+  
+  .nav-menu {
+    width: max-content !important;
+    padding: 0 16px !important;
+    gap: 8px !important;
+    justify-content: flex-start !important;
+  }
+  
+  .nav-item {
+    white-space: nowrap !important;
+    flex: 0 0 auto !important;
+    padding: 8px 12px !important;
+  }
+
+  /* Form and Input Elements (Touch Targets) */
+  .btn, 
+  .input-field,
+  .modal-tab {
+    min-height: 44px !important; /* Accessible touch target size */
+  }
+
+  .input-field {
+    font-size: 16px !important; /* Prevent iOS zoom */
+  }
+
+  /* Modals - Bottom Sheet Style */
+  .modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 90vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    position: absolute !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    transform: translateY(100%) !important;
+    animation: slideUpBottomSheet 0.3s forwards cubic-bezier(0.16, 1, 0.3, 1) !important;
+    padding: 20px 16px !important;
+  }
+
+  @keyframes slideUpBottomSheet {
+    to {
+      transform: translateY(0) !important;
+      opacity: 1 !important;
+    }
+  }
+
+  .modal-header {
+    position: sticky !important;
+    top: 0 !important;
+    background: inherit !important;
+    z-index: 10 !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Toast Adjustments */
+  .toast-container {
+    top: 16px !important;
+    right: 16px !important;
+    left: 16px !important;
+  }
+  
+  .toast-message {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}

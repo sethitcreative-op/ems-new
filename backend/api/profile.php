@@ -7,7 +7,10 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // Function to handle image upload
 function uploadProfilePicture($file) {
-    $target_dir = "../../frontend/public/img/profiles/";
+    // Determine upload directory based on environment (local vs production)
+    $localDir = "../../frontend/public/img/profiles/";
+    $prodDir = "../../img/profiles/";
+    $target_dir = is_dir("../../frontend") ? $localDir : $prodDir;
     if (!file_exists($target_dir)) {
         mkdir($target_dir, 0777, true);
     }
@@ -77,7 +80,7 @@ if ($method === 'POST') {
         $fetch_stmt->execute([':id' => $id]);
         $updated_user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
 
-        logAction($conn, $id, 'UPDATE_PROFILE', "User {$username} updated their profile.");
+        logAction($conn, $id, 'UPDATE_PROFILE', "User {$full_name} (Username: {$username}) successfully updated their personal profile details.");
 
         echo json_encode(["status" => "success", "message" => "Profile updated successfully", "user" => $updated_user]);
     } catch(PDOException $e) {
@@ -132,7 +135,7 @@ elseif ($method === 'PUT') {
         $fetch_stmt->execute([':id' => $id]);
         $updated_user = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
 
-        logAction($conn, $id, 'UPDATE_PROFILE', "User {$username} updated their profile.");
+        logAction($conn, $id, 'UPDATE_PROFILE', "User {$full_name} (Username: {$username}) successfully updated their personal profile details.");
 
         echo json_encode(["status" => "success", "message" => "Profile updated successfully", "user" => $updated_user]);
     } catch(PDOException $e) {

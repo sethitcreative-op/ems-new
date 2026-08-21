@@ -490,7 +490,7 @@ const ProfilePage = () => {
                         <span style={{ fontSize: '13px' }}>{new Date(idRec.uploaded_at).toLocaleDateString()}</span>
                       </div>
                       <a 
-                        href={`${API_BASE.replace('/api', '')}/${idRec.file_path}`} 
+                        href={idRec.file_path.startsWith('img/') ? `/${idRec.file_path}` : `${API_BASE.replace('/api', '') === '' ? '/backend' : API_BASE.replace('/api', '')}/${idRec.file_path}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         style={{ marginTop: 'auto', background: 'var(--bg-color)', color: 'var(--primary-color)', padding: '8px', borderRadius: '8px', textAlign: 'center', textDecoration: 'none', fontSize: '13px', fontWeight: '500' }}

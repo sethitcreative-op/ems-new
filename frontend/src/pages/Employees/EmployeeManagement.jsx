@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Users, UserPlus, Trash2, Edit2, X, Calendar, Clock, DollarSign,
-  Briefcase, Search, Download, CheckCircle, ChevronDown, Building, FileText, User, Eye, EyeOff
+  Briefcase, Search, Download, CheckCircle, ChevronDown, Building, FileText, User, Eye, EyeOff, LayoutGrid, List
 } from 'lucide-react';
 import './EmployeeManagement.css';
 import API_BASE from '../../config/api';
@@ -20,6 +20,7 @@ const EmployeeManagement = () => {
   const [activeModalTab, setActiveModalTab] = useState('profile');
   const [formError, setFormError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [viewMode, setViewMode] = useState('table'); // 'table' or 'card'
 
   // Employee Details View State
   const [selectedEmployeeForView, setSelectedEmployeeForView] = useState(null);
@@ -411,6 +412,24 @@ const EmployeeManagement = () => {
           </div>
         </div>
         <div className="mgmt-toolbar-right">
+          <div className="view-mode-toggle" style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '4px' }}>
+            <button 
+              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`} 
+              onClick={() => setViewMode('table')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 12px', border: 'none', background: viewMode === 'table' ? 'var(--primary)' : 'transparent', color: viewMode === 'table' ? '#fff' : 'var(--text-muted)', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}
+              title="Table View"
+            >
+              <List size={16} />
+            </button>
+            <button 
+              className={`view-toggle-btn ${viewMode === 'card' ? 'active' : ''}`} 
+              onClick={() => setViewMode('card')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 12px', border: 'none', background: viewMode === 'card' ? 'var(--primary)' : 'transparent', color: viewMode === 'card' ? '#fff' : 'var(--text-muted)', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}
+              title="Card View"
+            >
+              <LayoutGrid size={16} />
+            </button>
+          </div>
           <button className="btn btn-primary mgmt-btn" onClick={toggleForm}>
             <UserPlus size={18} /> New User
           </button>
@@ -617,8 +636,9 @@ const EmployeeManagement = () => {
       )}
 
       <div className="glass mgmt-table-container">
-        <div className="table-responsive">
-          <table className="mgmt-table">
+        {viewMode === 'table' ? (
+          <div className="table-responsive">
+            <table className="mgmt-table">
             <thead>
               <tr>
                 <th>USER</th>
@@ -632,7 +652,7 @@ const EmployeeManagement = () => {
               {filteredEmployees.length > 0 ? (
                 filteredEmployees.map((emp, index) => (
                   <tr key={index} className="clickable-row" onClick={() => handleViewDetails(emp)}>
-                    <td>
+                    <td data-label="User" className="employee-info-cell">
                       <div className="user-cell">
                         <div className="user-avatar" style={{ backgroundColor: `hsl(${(emp.id * 137) % 360}, 70%, 40%)` }}>
                           {emp.profile_picture ? (
@@ -647,19 +667,19 @@ const EmployeeManagement = () => {
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Role">
                       <span className={`mgmt-role-badge ${emp.role}`}>
                         <Users size={14} className="role-icon" />
                         {emp.role === 'admin' ? 'ADMIN' : 'AGENT'}
                       </span>
                     </td>
-                    <td className="rate-cell">${emp.hourly_rate}/hr</td>
-                    <td>
+                    <td data-label="Rate" className="rate-cell">${emp.hourly_rate}/hr</td>
+                    <td data-label="Status">
                       <span className="status-badge-active">
                         <CheckCircle size={14} /> ACTIVE
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Actions" className="actions-cell">
                       <div className="action-buttons">
                         <button className="mgmt-action-btn" onClick={(e) => { e.stopPropagation(); handleEditClick(emp); }} title="Edit User">
                           <Edit2 size={16} />
@@ -684,6 +704,42 @@ const EmployeeManagement = () => {
             </tbody>
           </table>
         </div>
+        ) : (
+          <div className="mgmt-grid" style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
+            {filteredEmployees.length > 0 ? (
+              filteredEmployees.map((emp, index) => (
+                <div key={index} className="team-card" onClick={() => handleViewDetails(emp)}>
+                  <div className="team-card-avatar">
+                    {emp.profile_picture ? (
+                      <img src={renderProfilePicture(emp.profile_picture)} alt={emp.full_name} />
+                    ) : (
+                      <span>{getInitials(emp.full_name)}</span>
+                    )}
+                  </div>
+                  <div className="team-card-info">
+                    <h3>{emp.full_name}</h3>
+                    <p>@{emp.username}</p>
+                    <span className="team-role-badge">
+                      <Users size={12}/> {emp.role === 'admin' ? 'Administrator' : 'Agent'}
+                    </span>
+                  </div>
+                  <div className="team-card-actions" style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px' }}>
+                     <button className="mgmt-action-btn" onClick={(e) => { e.stopPropagation(); handleEditClick(emp); }} style={{ background: 'rgba(255,255,255,0.1)', padding: '6px', borderRadius: '6px', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                       <Edit2 size={14} />
+                     </button>
+                     <button className="mgmt-action-btn delete-btn" onClick={(e) => { e.stopPropagation(); handleDelete(emp.id); }} style={{ background: 'rgba(239, 68, 68, 0.2)', padding: '6px', borderRadius: '6px', color: '#ef4444', border: 'none', cursor: 'pointer' }}>
+                       <Trash2 size={14} />
+                     </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="empty-state" style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px' }}>
+                No employees found.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Employee Details Modal */}
@@ -870,7 +926,7 @@ const EmployeeManagement = () => {
                                 <span style={{ fontSize: '13px', color: 'var(--text-main)' }}>{new Date(idRec.uploaded_at).toLocaleDateString()}</span>
                               </div>
                               <a 
-                                href={`${API_BASE.replace('/api', '')}/${idRec.file_path}`} 
+                                href={idRec.file_path.startsWith('img/') ? `/${idRec.file_path}` : `${API_BASE.replace('/api', '') === '' ? '/backend' : API_BASE.replace('/api', '')}/${idRec.file_path}`} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 style={{ marginTop: 'auto', background: 'var(--bg-color)', color: 'var(--primary-color)', padding: '8px', borderRadius: '8px', textAlign: 'center', textDecoration: 'none', fontSize: '13px', fontWeight: '500' }}
