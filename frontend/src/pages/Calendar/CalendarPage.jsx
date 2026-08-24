@@ -797,9 +797,14 @@ const CalendarPage = () => {
             </div>
 
             {!isAdmin ? (
-              <button className="action-btn huddle-btn" onClick={() => setShowScheduleModal(true)}>
-                <Clock size={16} /> Request Schedule
-              </button>
+              <>
+                <button className="action-btn huddle-btn" onClick={() => setShowScheduleModal(true)}>
+                  <Clock size={16} /> Request Schedule
+                </button>
+                <button className="action-btn" style={{ background: '#10b981', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/leave-tracker')}>
+                  <CalendarIcon size={16} /> Request Leave
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -810,6 +815,9 @@ const CalendarPage = () => {
                 </button>
                 <button className="action-btn create-btn" onClick={() => setShowAddModal(true)}>
                   <Plus size={16} /> Create
+                </button>
+                <button className="action-btn" style={{ background: '#10b981', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/leave-management')}>
+                  <CalendarIcon size={16} /> Manage Leaves
                 </button>
               </>
             )}

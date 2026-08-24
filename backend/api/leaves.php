@@ -53,6 +53,17 @@ elseif ($method === 'POST') {
     $end_date = $data->end_date;
     $total_days = $data->total_days;
     $reason = $data->reason;
+    $year = date('Y', strtotime($start_date));
+
+    // Check limit of 3 leave requests per year
+    $checkLimitStmt = $conn->prepare("SELECT COUNT(*) as request_count FROM leave_requests WHERE user_id = :user_id AND YEAR(start_date) = :year");
+    $checkLimitStmt->execute([':user_id' => $user_id, ':year' => $year]);
+    $requestCount = $checkLimitStmt->fetch(PDO::FETCH_ASSOC)['request_count'];
+
+    if ($requestCount >= 3) {
+        echo json_encode(["status" => "error", "message" => "You have reached the maximum limit of 3 leave requests for this year."]);
+        exit;
+    }
     
     $query = "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, :leave_type, :start_date, :end_date, :total_days, :reason, 'pending')";
     $stmt = $conn->prepare($query);

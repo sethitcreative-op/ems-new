@@ -137,6 +137,7 @@ const DtrPage = () => {
   const isAdmin = user?.role === 'admin';
   const [employees, setEmployees] = useState([]);
   const [events, setEvents] = useState([]);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const { addNotification } = useNotification();
 
   // Helper: get US date as YYYY-MM-DD to match the server time
@@ -263,6 +264,7 @@ const DtrPage = () => {
   useEffect(() => {
     fetchRecords();
     fetchEvents();
+    fetchLeaveRequests();
     if (isAdmin) fetchEmployees();
   }, []);
 
@@ -274,6 +276,23 @@ const DtrPage = () => {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const fetchLeaveRequests = async () => {
+    try {
+      // Fetch approved leave requests — admin sees all, user sees their own
+      const url = isAdmin
+        ? `${API_BASE}/leaves.php?action=requests&role=admin`
+        : `${API_BASE}/leaves.php?action=requests&role=user&user_id=${user.id}`;
+      const res = await axios.get(url);
+      if (res.data.status === 'success') {
+        // Only keep approved leave requests
+        const approved = res.data.data.filter(lr => lr.status === 'approved');
+        setLeaveRequests(approved);
+      }
+    } catch (err) {
+      console.error('Error fetching leave requests:', err);
     }
   };
 
@@ -1220,24 +1239,36 @@ const DtrPage = () => {
                             const row = dailyRecords[0];
                             const targetUserId = displayUser.id;
 
+                            // Check if this date is covered by an approved leave request
+                            const approvedLeaveForDay = leaveRequests.find(lr =>
+                              String(lr.user_id) === String(targetUserId) &&
+                              dayObj.dateStr >= lr.start_date &&
+                              dayObj.dateStr <= lr.end_date
+                            );
+
                             let virtualStatus = '';
                             if (!row) {
-                              const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
-                              const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
-                              const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
-                              
-                              // Prioritize holiday over leave for display if both exist, or just use the first approved
-                              const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL')) 
-                                            || dailyEvents.find(e => e.status === 'approved');
+                              // If covered by an approved leave request, show VACATION LEAVE
+                              if (approvedLeaveForDay) {
+                                virtualStatus = 'VACATION LEAVE';
+                              } else {
+                                const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
+                                const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
+                                const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
+                                
+                                // Prioritize holiday over leave for display if both exist, or just use the first approved
+                                const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL')) 
+                                              || dailyEvents.find(e => e.status === 'approved');
 
-                              if (approved) {
-                                if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
-                                else if (approved.event_type === 'HL' || approved.event_type === 'Holiday') virtualStatus = 'HOLIDAY';
-                                else virtualStatus = 'SCHEDULED';
-                              } else if (pendingReschedule) {
-                                virtualStatus = 'PENDING RESCHEDULE';
-                              } else if (pendingNew) {
-                                virtualStatus = 'PENDING SCHEDULE';
+                                if (approved) {
+                                  if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
+                                  else if (approved.event_type === 'HL' || approved.event_type === 'Holiday') virtualStatus = 'HOLIDAY';
+                                  else virtualStatus = 'SCHEDULED';
+                                } else if (pendingReschedule) {
+                                  virtualStatus = 'PENDING RESCHEDULE';
+                                } else if (pendingNew) {
+                                  virtualStatus = 'PENDING SCHEDULE';
+                                }
                               }
                             }
 
@@ -1248,12 +1279,13 @@ const DtrPage = () => {
                             grandTotalHrs += hrs;
                             grandTotalEarnings += earnings;
 
-                            const isSpecialStatus = row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status);
+                            const isSpecialStatus = (row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status)) || (!row && virtualStatus === 'VACATION LEAVE');
                             const displayStatus = row && row.status ? row.status.toUpperCase() : virtualStatus;
 
                             let statusColor = 'inherit';
                             if (row?.status === 'Absent') statusColor = 'var(--danger)';
                             else if (isSpecialStatus) statusColor = 'var(--primary)';
+                            else if (virtualStatus === 'VACATION LEAVE') statusColor = 'var(--primary)';
                             else if (virtualStatus) statusColor = 'var(--text-muted)';
 
                             return (

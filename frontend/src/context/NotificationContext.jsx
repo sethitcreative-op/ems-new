@@ -19,22 +19,23 @@ export const NotificationProvider = ({ children }) => {
 
   const addNotification = useCallback(async (notification) => {
     const now = Date.now();
-    // Prevent adding the exact same notification if it was added within the last 3 seconds
+    // Prevent adding the exact same notification (same message+type) within the last 3 seconds
     if (
-      lastNotificationRef.current.message === notification.message && 
+      lastNotificationRef.current.message === notification.message &&
+      lastNotificationRef.current.type === (notification.type || 'info') &&
       (now - lastNotificationRef.current.time) < 3000
     ) {
       return; 
     }
     
-    lastNotificationRef.current = { message: notification.message, time: now };
+    lastNotificationRef.current = { message: notification.message, type: notification.type || 'info', time: now };
 
-    const id = Date.now() + Math.random();
+    const localId = Date.now() + Math.random();
     const newNotification = {
       timestamp: new Date(),
       read: false,
       ...notification,
-      id, // ensure id is not overwritten
+      id: localId, // temporary local id until DB responds
     };
     
     // Add to local state for immediate feedback
@@ -43,21 +44,21 @@ export const NotificationProvider = ({ children }) => {
     
     setToasts(prev => {
       // Prevent duplicate toasts on screen at the same time
-      if (prev.some(t => t.message === notification.message)) {
+      if (prev.some(t => t.message === notification.message && t.type === (notification.type || 'info'))) {
         return prev;
       }
       return [...prev, newNotification];
     });
     
     setTimeout(() => {
-      removeToast(id);
+      removeToast(localId);
     }, 4000);
 
     // Persist to database
     const user = JSON.parse(localStorage.getItem('user'));
     if (user) {
       try {
-        await fetch(`${API_BASE}/notifications.php`, {
+        const res = await fetch(`${API_BASE}/notifications.php`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -68,6 +69,12 @@ export const NotificationProvider = ({ children }) => {
             message: notification.message
           })
         });
+        const resData = await res.json();
+        // CRITICAL FIX: Mark the DB-assigned id as already seen so the poller
+        // does not re-surface this same notification as a second toast.
+        if (resData && resData.id) {
+          seenNotificationIds.current.add(String(resData.id));
+        }
       } catch (error) {
         console.error("Failed to persist notification", error);
       }
@@ -110,22 +117,24 @@ export const NotificationProvider = ({ children }) => {
           // Check for new unread notifications to show toasts only after initial load
           if (initialLoadDone.current) {
             newUnread.forEach(n => {
-              if (!seenNotificationIds.current.has(n.id)) {
-                // It's a brand new unread notification
+              // Normalize id to string for consistent Set lookups
+              const nId = String(n.id);
+              if (!seenNotificationIds.current.has(nId)) {
+                // It's a brand new unread notification (came from backend, e.g. admin action)
                 const toastId = `db-${n.id}`;
                 setToasts(t => {
-                  if (t.some(existingToast => existingToast.message === n.message)) {
+                  if (t.some(existingToast => existingToast.message === n.message && existingToast.type === (n.type || 'info'))) {
                     return t;
                   }
                   return [...t, { ...n, timestamp: n.created_at, id: toastId }];
                 });
                 setTimeout(() => removeToast(toastId), 4000);
-                seenNotificationIds.current.add(n.id);
+                seenNotificationIds.current.add(nId);
               }
             });
           } else {
             // Initial load, just mark all as seen so we don't toast them later
-            newNotifs.forEach(n => seenNotificationIds.current.add(n.id));
+            newNotifs.forEach(n => seenNotificationIds.current.add(String(n.id)));
             initialLoadDone.current = true;
           }
           

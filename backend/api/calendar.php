@@ -117,6 +117,49 @@ elseif ($method === 'POST') {
 
     $schedule_option = $data->schedule_option ?? null;
 
+    if ($event_type === 'VL') {
+        $year = date('Y', strtotime($event_date));
+        $checkLimitStmt = $conn->prepare("SELECT COUNT(*) as request_count FROM leave_requests WHERE user_id = :user_id AND YEAR(start_date) = :year");
+        $checkLimitStmt->execute([':user_id' => $user_id, ':year' => $year]);
+        $requestCount = $checkLimitStmt->fetch(PDO::FETCH_ASSOC)['request_count'];
+
+        if ($requestCount >= 3 && !$is_admin_assigning) {
+            echo json_encode(["status" => "error", "message" => "You have reached the maximum limit of 3 leave requests for this year."]);
+            exit;
+        }
+
+        $reason = trim($description) === '' ? 'Vacation Leave via Calendar' : $description;
+
+        $query = "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Vacation Leave', :start_date, :end_date, 1, :reason, :status)";
+        $stmt = $conn->prepare($query);
+        try {
+            $stmt->execute([
+                ':user_id' => $user_id,
+                ':start_date' => $event_date,
+                ':end_date' => $event_date,
+                ':reason' => $reason,
+                ':status' => $status
+            ]);
+
+            if ($is_admin_assigning) {
+                logAction($conn, $user_id, 'ASSIGN_LEAVE', "Administrator assigned a Vacation Leave for {$event_date}.");
+                $notif_message = "Admin has assigned a Vacation Leave for " . date('M d, Y', strtotime($event_date)) . ".";
+                $notif_stmt = $conn->prepare("INSERT INTO notifications (user_id, type, message) VALUES (:user_id, 'info', :message)");
+                $notif_stmt->execute([
+                    ':user_id' => $user_id,
+                    ':message' => $notif_message
+                ]);
+            } else {
+                logAction($conn, $user_id, 'SUBMIT_LEAVE', "Employee submitted a Vacation Leave for {$event_date} via Calendar.");
+            }
+
+            echo json_encode(["status" => "success", "message" => "Leave request created successfully"]);
+        } catch(PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Could not create leave request: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
     if (in_array($event_type, ['SL', 'PDO', 'Holiday'])) {
         echo json_encode(["status" => "error", "message" => "Leaves and Holidays must be managed through their respective modules."]);
         exit;
@@ -155,6 +198,100 @@ elseif ($method === 'POST') {
 }
 elseif ($method === 'PUT') {
     $event_id = $data->id;
+
+    if (strpos($event_id, 'leave_') === 0) {
+        $parts = explode('_', $event_id);
+        $leave_id = $parts[1];
+
+        if (isset($data->action) && $data->action === 'edit') {
+            $event_date = $data->event_date;
+            $status = $data->status ?? null;
+            $new_event_type = $data->event_type ?? 'VL';
+            $user_id = $data->user_id ?? 0;
+            $title = $data->title ?? '';
+            $description = $data->description ?? '';
+            $schedule_option = $data->schedule_option ?? null;
+
+            if ($new_event_type !== 'VL' && $new_event_type !== 'SL' && $new_event_type !== 'PDO' && $new_event_type !== 'Holiday') {
+                // Converting from Leave to WS/Other
+                // 1. Delete the leave request
+                $del = $conn->prepare("DELETE FROM leave_requests WHERE id = :id");
+                $del->execute([':id' => $leave_id]);
+                
+                // 2. Insert into events
+                $ins = $conn->prepare("INSERT INTO events (user_id, title, description, event_date, event_type, status, schedule_option) VALUES (:user_id, :title, :description, :event_date, :event_type, :status, :schedule_option)");
+                $ins->execute([
+                    ':user_id' => $user_id,
+                    ':title' => $title,
+                    ':description' => $description,
+                    ':event_date' => $event_date,
+                    ':event_type' => $new_event_type,
+                    ':status' => $status ?? 'pending',
+                    ':schedule_option' => $schedule_option
+                ]);
+                echo json_encode(["status" => "success", "message" => "Converted to {$new_event_type} successfully"]);
+                exit;
+            }
+            
+            $query = "UPDATE leave_requests SET start_date = :event_date, end_date = :event_date, total_days = 1";
+            if ($status) {
+                $query .= ", status = :status";
+            }
+            $query .= " WHERE id = :id";
+            
+            $stmt = $conn->prepare($query);
+            try {
+                $params = [':event_date' => $event_date, ':id' => $leave_id];
+                if ($status) {
+                    $params[':status'] = $status;
+                }
+                $stmt->execute($params);
+                echo json_encode(["status" => "success", "message" => "Leave request updated successfully via calendar"]);
+            } catch(PDOException $e) {
+                echo json_encode(["status" => "error", "message" => "Could not update leave: " . $e->getMessage()]);
+            }
+        } else {
+            $status = $data->status;
+            $query = "UPDATE leave_requests SET status = :status";
+            $admin_remarks = '';
+            if ($status === 'approved' && isset($data->approved_by_name)) {
+                $admin_remarks = 'Approved by ' . $data->approved_by_name . ' via Calendar';
+                $query .= ", admin_remarks = :admin_remarks";
+            }
+            $query .= " WHERE id = :id";
+            
+            $stmt = $conn->prepare($query);
+            try {
+                $params = [':status' => $status, ':id' => $leave_id];
+                if ($status === 'approved' && isset($data->approved_by_name)) {
+                    $params[':admin_remarks'] = $admin_remarks;
+                }
+                $stmt->execute($params);
+                
+                if ($status === 'approved') {
+                    $getLeave = $conn->prepare("SELECT user_id, leave_type, start_date, total_days FROM leave_requests WHERE id = :id");
+                    $getLeave->execute([':id' => $leave_id]);
+                    $leaveData = $getLeave->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($leaveData) {
+                        $updBalance = "UPDATE leave_balances SET used_days = used_days + :days WHERE user_id = :user_id AND leave_type = :leave_type AND year = :year";
+                        $bStmt = $conn->prepare($updBalance);
+                        $bStmt->execute([
+                            ':days' => $leaveData['total_days'],
+                            ':user_id' => $leaveData['user_id'],
+                            ':leave_type' => $leaveData['leave_type'],
+                            ':year' => date('Y', strtotime($leaveData['start_date']))
+                        ]);
+                    }
+                }
+                
+                echo json_encode(["status" => "success", "message" => "Leave status updated via calendar"]);
+            } catch(PDOException $e) {
+                echo json_encode(["status" => "error", "message" => "Could not update leave status: " . $e->getMessage()]);
+            }
+        }
+        exit;
+    }
     if (isset($data->action) && $data->action === 'edit') {
         $title = $data->title ?? '';
         $description = $data->description ?? '';
@@ -168,6 +305,26 @@ elseif ($method === 'PUT') {
         
         if (in_array($event_type, ['SL', 'PDO', 'Holiday'])) {
             echo json_encode(["status" => "error", "message" => "Leaves and Holidays must be managed through their respective modules."]);
+            exit;
+        }
+
+        if ($event_type === 'VL') {
+            // Converting from WS to VL
+            // 1. Delete the event
+            $del = $conn->prepare("DELETE FROM events WHERE id = :id");
+            $del->execute([':id' => $event_id]);
+            
+            // 2. Insert into leave_requests
+            $reason = trim($description) === '' ? 'Vacation Leave via Calendar' : $description;
+            $ins = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Vacation Leave', :start_date, :end_date, 1, :reason, :status)");
+            $ins->execute([
+                ':user_id' => $user_id,
+                ':start_date' => $event_date,
+                ':end_date' => $event_date,
+                ':reason' => $reason,
+                ':status' => $status ?? 'pending'
+            ]);
+            echo json_encode(["status" => "success", "message" => "Converted to Vacation Leave successfully"]);
             exit;
         }
 
@@ -337,6 +494,22 @@ elseif ($method === 'DELETE') {
     
     if (!$event_id || !$user_id) {
         echo json_encode(["status" => "error", "message" => "Missing parameters"]);
+        exit;
+    }
+
+    if (strpos($event_id, 'leave_') === 0) {
+        $parts = explode('_', $event_id);
+        $leave_id = $parts[1];
+        
+        $query = "DELETE FROM leave_requests WHERE id = :id";
+        $stmt = $conn->prepare($query);
+        try {
+            $stmt->execute([':id' => $leave_id]);
+            logAction($conn, $user_id, 'CANCEL_LEAVE', "User deleted their leave request via calendar.");
+            echo json_encode(["status" => "success", "message" => "Leave request deleted successfully via calendar"]);
+        } catch(PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Could not delete leave request via calendar"]);
+        }
         exit;
     }
     

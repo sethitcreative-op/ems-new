@@ -19,9 +19,16 @@ $port = 3306;
 //$password = "iMPACTPROPH2026";
 //$port = 3306;
 
+// Set global PHP timezone
+date_default_timezone_set('America/New_York');
+
 try {
     $conn = new PDO("mysql:host={$host};port={$port};dbname={$db_name}", $username, $password);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    
+    // Set MySQL timezone to match PHP timezone
+    $offset = (new DateTime())->format('P');
+    $conn->exec("SET time_zone = '{$offset}';");
    
 
     // Ensure uploads directory exists

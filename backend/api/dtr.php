@@ -64,8 +64,9 @@ if ($action === 'clock_in') {
 
 } elseif ($action === 'get_records') {
     $server_date = date('Y-m-d');
-    
-    // Auto-close past open shifts (forgot to PM OUT) up to 23:59:59 of that day
+    $yesterday   = date('Y-m-d', strtotime('-1 day'));
+
+    // ── 1. Auto-close past open shifts (forgot to PM OUT) up to 23:59:59 of that day ──
     $auto_close_query = "
         UPDATE attendance a
         JOIN users u ON a.user_id = u.id
@@ -78,6 +79,96 @@ if ($action === 'clock_in') {
     ";
     $auto_close_stmt = $conn->prepare($auto_close_query);
     $auto_close_stmt->execute([':server_date' => $server_date]);
+
+    // ── 2. Auto-mark Absent for ALL past days (Mon–Sun) with no clock-in ──
+    // Get all users and their earliest possible date (account creation date)
+    $allUsersStmt = $conn->prepare("SELECT id, DATE(created_at) as joined_date FROM users");
+    $allUsersStmt->execute();
+    $allUsers = $allUsersStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    foreach ($allUsers as $u) {
+        $uid        = $u['id'];
+        $startDate  = $u['joined_date'] ?? '2024-01-01';
+
+        // Batch-insert Absent for every past date with no attendance record,
+        // excluding dates covered by a holiday or an approved leave request
+        $autoAbsentQuery = "
+            INSERT INTO attendance (user_id, date, status, total_hours, earnings)
+            SELECT :uid, d.date_val, 'Absent', 0, 0
+            FROM (
+                SELECT DATE_ADD(:start, INTERVAL seq DAY) AS date_val
+                FROM (
+                    SELECT a.N + b.N * 10 + c.N * 100 AS seq
+                    FROM
+                        (SELECT 0 AS N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) a,
+                        (SELECT 0 AS N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) b,
+                        (SELECT 0 AS N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+                         UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) c
+                ) nums
+                WHERE DATE_ADD(:start2, INTERVAL seq DAY) <= :yesterday
+            ) d
+            WHERE
+                -- No existing attendance record
+                NOT EXISTS (
+                    SELECT 1 FROM attendance a2
+                    WHERE a2.user_id = :uid2 AND a2.date = d.date_val
+                )
+                -- No holiday on that date
+                AND NOT EXISTS (
+                    SELECT 1 FROM holidays h
+                    WHERE h.holiday_date = d.date_val
+                )
+                -- No approved leave request covering that date (from leave_requests table)
+                AND NOT EXISTS (
+                    SELECT 1 FROM leave_requests lr
+                    WHERE lr.user_id = :uid3
+                      AND lr.status = 'approved'
+                      AND d.date_val BETWEEN lr.start_date AND lr.end_date
+                )
+                -- No approved calendar event (VL, SL, PDO, etc.) on that date
+                AND NOT EXISTS (
+                    SELECT 1 FROM events ev
+                    WHERE ev.user_id = :uid4
+                      AND ev.event_date = d.date_val
+                      AND ev.status = 'approved'
+                      AND ev.event_type IN ('VL', 'SL', 'PDO', 'Birthday', 'Meeting', 'Holiday', 'HL')
+                )
+        ";
+        $autoAbsentStmt = $conn->prepare($autoAbsentQuery);
+        $autoAbsentStmt->execute([
+            ':uid'       => $uid,
+            ':uid2'      => $uid,
+            ':uid3'      => $uid,
+            ':uid4'      => $uid,
+            ':start'     => $startDate,
+            ':start2'    => $startDate,
+            ':yesterday' => $yesterday
+        ]);
+
+        // Also update existing records that have no clock-in and are not in a protected status
+        $updateAbsentQuery = "
+            UPDATE attendance
+            SET status = 'Absent'
+            WHERE user_id = :uid
+              AND date < :server_date
+              AND am_in IS NULL
+              AND status NOT IN ('Leave', 'Holiday', 'Rescheduled')
+              AND NOT EXISTS (
+                  SELECT 1 FROM leave_requests lr
+                  WHERE lr.user_id = :uid2
+                    AND lr.status = 'approved'
+                    AND attendance.date BETWEEN lr.start_date AND lr.end_date
+              )
+        ";
+        $updateAbsentStmt = $conn->prepare($updateAbsentQuery);
+        $updateAbsentStmt->execute([
+            ':uid'         => $uid,
+            ':uid2'        => $uid,
+            ':server_date' => $server_date
+        ]);
+    }
 
     $user_id = isset($_GET['user_id']) ? $_GET['user_id'] : null;
     if ($user_id) {
@@ -93,6 +184,7 @@ if ($action === 'clock_in') {
     
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo json_encode(["status" => "success", "data" => $records]);
+
 } elseif ($action === 'edit_record') {
     // Admin Edit Record
     $record_id = $data->record_id;
