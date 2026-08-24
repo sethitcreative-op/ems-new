@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Edit2, Trash2, RefreshCw, User, Tag, AlignLeft, Info, Save, Briefcase } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { ChevronLeft, ChevronRight, Plus, X, Calendar as CalendarIcon, Clock, Edit2, Trash2, RefreshCw, User, Tag, AlignLeft, Info, Save, Briefcase, Download } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
@@ -795,6 +797,112 @@ const CalendarPage = () => {
                 </div>
               )}
             </div>
+
+            {isAdmin && viewMode === 'week' && (
+              <button
+                className="action-btn huddle-btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                onClick={() => {
+                  const getLocalDateStr = (date) => {
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                  };
+                  const doc = new jsPDF({ orientation: 'landscape' });
+                  doc.setFontSize(22);
+                  doc.setFont('helvetica', 'bold');
+                  doc.setTextColor(30, 41, 59);
+                  doc.text('Payroll Report', 148.5, 20, { align: 'center' });
+                  doc.setFontSize(11);
+                  doc.setFont('helvetica', 'bold');
+                  doc.setTextColor(100, 116, 139);
+                  const startDate = weekCells[0].date;
+                  const endDate = weekCells[6].date;
+                  const fmtDate = (d) => `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}-${d.getFullYear()}`;
+                  doc.text(`Cycle: ${fmtDate(startDate)} to ${fmtDate(endDate)}`, 148.5, 28, { align: 'center' });
+                  const dates = weekCells.map(c => getLocalDateStr(c.date));
+                  const dateHeaders = ['EMPLOYEE'];
+                  weekCells.forEach(c => {
+                    const shortDay = c.date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+                    const mmdd = `${c.date.getMonth()+1}/${c.date.getDate()}`;
+                    dateHeaders.push(`${mmdd}\n${shortDay}`);
+                  });
+                  const tableRows = employees.map(emp => {
+                    const row = [emp.full_name];
+                    for (let i = 0; i < 7; i++) row.push('');
+                    return row;
+                  });
+                  autoTable(doc, {
+                    head: [dateHeaders],
+                    body: tableRows,
+                    startY: 40,
+                    theme: 'grid',
+                    headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [200,200,200] },
+                    bodyStyles: { textColor: [51,65,85], halign: 'center', lineWidth: 0.1, lineColor: [200,200,200] },
+                    styles: { font: 'helvetica', fontSize: 10, cellPadding: 4, minCellHeight: 16 },
+                    didParseCell: function(data) {
+                      if (data.section === 'body' && data.column.index > 0) {
+                        const empName = data.row.raw[0];
+                        const colIndex = data.column.index;
+                        const ds = dates[colIndex - 1];
+                        const emp = employees.find(e => e.full_name === empName);
+                        let cellColor = [255, 255, 255];
+                        if (emp) {
+                          const evt = events.find(e => String(e.user_id) === String(emp.id) && e.event_date.split(' ')[0] === ds && e.status === 'approved');
+                          if (evt && evt.schedule_option && evt.schedule_option !== 'none') {
+                            const opt = evt.schedule_option.toLowerCase();
+                            if (opt.includes('alternate') || opt.includes('yellow')) {
+                              cellColor = [255, 235, 59];
+                            } else if (opt.includes('warehouse') || opt.includes('gray') || opt.includes('blue')) {
+                              cellColor = [207, 226, 243];
+                            } else {
+                              cellColor = [220, 220, 220];
+                            }
+                          } else if (evt && (evt.event_type === 'WS' || evt.title === 'Work Shift')) {
+                            cellColor = [147, 196, 125];
+                          } else if (!evt) {
+                            const dayOfWeek = new Date(ds + 'T00:00:00').getDay();
+                            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                              cellColor = [147, 196, 125];
+                            }
+                          }
+                          if (evt && (evt.event_type === 'VL' || evt.event_type === 'HL' || evt.event_type === 'Holiday' || evt.event_type === 'SL' || evt.event_type === 'PDO')) {
+                            cellColor = [255, 255, 255];
+                          }
+                        }
+                        data.cell.styles.fillColor = cellColor;
+                        data.cell.text = [''];
+                      }
+                    }
+                  });
+                  const finalY = doc.lastAutoTable.finalY || 40;
+                  doc.setFontSize(10);
+                  doc.setFont('helvetica', 'italic');
+                  doc.setTextColor(50, 50, 50);
+                  doc.setFillColor(255, 235, 59);
+                  doc.rect(14, finalY + 10, 5, 5, 'F');
+                  doc.text('* Alternate Saturdays or Sundays', 22, finalY + 14);
+                  doc.setFillColor(207, 226, 243);
+                  doc.rect(14, finalY + 18, 5, 5, 'F');
+                  doc.text('* Available at warehouse when needed', 22, finalY + 22);
+                  doc.setFillColor(147, 196, 125);
+                  doc.rect(14, finalY + 26, 5, 5, 'F');
+                  doc.text('* Regular Work Schedule', 22, finalY + 30);
+                  const pageCount = doc.internal.getNumberOfPages();
+                  for (let i = 1; i <= pageCount; i++) {
+                    doc.setPage(i);
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(100, 116, 139);
+                    doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`, 280, 200, { align: 'right' });
+                  }
+                  doc.save('Weekly Schedule Report.pdf');
+                }}
+              >
+                <Download size={16} /> Weekly PDF
+              </button>
+            )}
 
             {!isAdmin ? (
               <>

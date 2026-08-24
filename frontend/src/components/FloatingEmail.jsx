@@ -104,19 +104,18 @@ const FloatingEmail = () => {
       if (response.data.status === 'success') {
         alert("Email sent successfully!");
         setIsOpen(false);
+        // Reset to first valid configured sender, NOT the logged-in user's raw email
+        // (which may not be in the backend senderCredentials map)
         const resetSender = senderEmails.length > 0 ? senderEmails[0] : defaultEmail;
         setFormData({ from_email: resetSender, recipient: '', subject: '' });
         setAttachment(null);
         if (editorRef.current) editorRef.current.innerHTML = '';
       } else {
-        // Show the actual SMTP error from the backend
-        alert("Failed to send email:\n" + (response.data.message || 'Unknown error'));
+        alert("Error: " + response.data.message);
       }
     } catch (error) {
       console.error(error);
-      // Try to surface the backend message if available, otherwise show network error
-      const backendMsg = error?.response?.data?.message;
-      alert(backendMsg ? `Failed to send email:\n${backendMsg}` : "Network error — could not reach the mail server. Please check your connection.");
+      alert("An error occurred while sending the email.");
     } finally {
       setLoading(false);
     }

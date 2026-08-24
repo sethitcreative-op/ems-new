@@ -375,7 +375,10 @@ const DtrPage = () => {
       if (res.data.status === 'success') {
         addNotification({ type: 'success', message: res.data.message });
         setEditModal({ ...editModal, isOpen: false });
+        // Re-fetch all data sources so the DTR stays in sync with latest state
         fetchRecords();
+        fetchEvents();
+        fetchLeaveRequests();
       } else {
         addNotification({ type: 'error', message: res.data.message || 'Failed to save record.' });
       }
@@ -391,7 +394,10 @@ const DtrPage = () => {
       const res = await axios.get(`${API_BASE}/dtr.php?action=delete_record&record_id=${recordId}`);
       if (res.data.status === 'success') {
         addNotification({ type: 'success', message: res.data.message });
+        // Re-fetch all data sources so the DTR stays in sync with latest state
         fetchRecords();
+        fetchEvents();
+        fetchLeaveRequests();
       } else {
         addNotification({ type: 'error', message: res.data.message || 'Failed to delete record.' });
       }
@@ -413,7 +419,10 @@ const DtrPage = () => {
         client_date: getLocalDateStr()
       });
       addNotification({ type: 'success', message: `AM IN logged successfully at ${timeStr}` });
+      // Re-fetch all data sources so the DTR stays in sync with latest state
       fetchRecords();
+      fetchEvents();
+      fetchLeaveRequests();
     } catch (err) {
       console.error(err);
     }
@@ -431,7 +440,10 @@ const DtrPage = () => {
         client_date: getLocalDateStr()
       });
       addNotification({ type: 'success', message: `PM OUT logged successfully at ${timeStr}` });
+      // Re-fetch all data sources so the DTR stays in sync with latest state
       fetchRecords();
+      fetchEvents();
+      fetchLeaveRequests();
     } catch (err) {
       console.error(err);
     }
@@ -573,7 +585,7 @@ const DtrPage = () => {
     doc.setFontSize(22);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(30, 41, 59);
-    doc.text("Payroll Report", 148.5, 20, { align: "center" });
+    doc.text("Weekly Payroll Report", 148.5, 20, { align: "center" });
 
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
@@ -587,105 +599,80 @@ const DtrPage = () => {
     const cycleStr = (startStr && endStr) ? `${formatMMDDYYYY(startStr)} to ${formatMMDDYYYY(endStr)}` : "All Records";
     doc.text(`Cycle: ${cycleStr}`, 148.5, 28, { align: "center" });
 
-    const startDateObj = new Date(startStr + 'T00:00:00');
-    const dates = [];
-    const dateHeaders = ["EMPLOYEE"];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(startDateObj);
-      d.setDate(startDateObj.getDate() + i);
-      const ds = getLocalDateStr(d);
-      dates.push(ds);
-
-      const shortDay = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-      const mmdd = `${d.getMonth() + 1}/${d.getDate()}`;
-      dateHeaders.push(`${mmdd}\n${shortDay}`);
+    // Filter records by date range and users
+    let currentRecords = [...records];
+    if (!usersToExport.includes('all')) {
+      currentRecords = currentRecords.filter(r => usersToExport.includes(String(r.user_id)));
     }
+    if (startStr) currentRecords = currentRecords.filter(r => r.date >= startStr);
+    if (endStr) currentRecords = currentRecords.filter(r => r.date <= endStr);
 
-    const tableRows = [];
+    // Group by employee
+    const grouped = {};
     let emps = employees;
     if (!usersToExport.includes('all')) {
       emps = employees.filter(e => usersToExport.includes(String(e.id)));
     }
 
     emps.forEach(emp => {
-      const rowData = [emp.full_name];
-      for (let i = 0; i < 7; i++) rowData.push('');
-      tableRows.push(rowData);
+      grouped[emp.id] = {
+        user_id: emp.id,
+        full_name: emp.full_name,
+        hourly_rate: emp.hourly_rate,
+        total_hours: 0,
+      };
     });
 
-    autoTable(doc, {
-      head: [dateHeaders],
-      body: tableRows,
-      startY: 40,
-      theme: 'grid',
-      headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [200, 200, 200] },
-      bodyStyles: { textColor: [51, 65, 85], halign: 'center', lineWidth: 0.1, lineColor: [200, 200, 200] },
-      styles: { font: 'helvetica', fontSize: 10, cellPadding: 4, minCellHeight: 16 },
-      didParseCell: function (data) {
-        if (data.section === 'body' && data.column.index > 0) {
-          const empName = data.row.raw[0];
-          const colIndex = data.column.index;
-          const ds = dates[colIndex - 1];
-          const emp = emps.find(e => e.full_name === empName);
-
-          let cellColor = [255, 255, 255]; // Default white
-
-          if (emp) {
-            const evt = events.find(e => String(e.user_id) === String(emp.id) && e.event_date === ds);
-            const record = records.find(r => String(r.user_id) === String(emp.id) && r.date === ds);
-
-            // Determine base color
-            if (evt && evt.schedule_option && evt.schedule_option !== 'none') {
-              const opt = evt.schedule_option.toLowerCase();
-              if (opt.includes('alternate') || opt.includes('yellow')) {
-                cellColor = [255, 235, 59]; // Yellow
-              } else if (opt.includes('warehouse') || opt.includes('gray') || opt.includes('blue')) {
-                cellColor = [207, 226, 243]; // Light Blue
-              } else {
-                cellColor = [220, 220, 220]; // Gray
-              }
-            } else if (evt && (evt.event_type === 'WS' || evt.title === 'Work Shift')) {
-              cellColor = [147, 196, 125]; // Green
-            } else if (record && record.status !== 'Absent' && record.status !== 'Rescheduled') {
-              cellColor = [147, 196, 125]; // Green
-            } else {
-              // Assume regular Mon-Fri is green unless absent, to match typical use case
-              const dayOfWeek = new Date(ds + 'T00:00:00').getDay();
-              if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                cellColor = [147, 196, 125]; // Green
-              }
-            }
-
-            // Override if absent, rescheduled, or on leave
-            if (record && (record.status === 'Absent' || record.status === 'Rescheduled')) {
-              cellColor = [255, 255, 255];
-            } else if (evt && (evt.event_type === 'VL' || evt.event_type === 'HL' || evt.event_type === 'Holiday' || evt.event_type === 'SL' || evt.event_type === 'PDO')) {
-              cellColor = [255, 255, 255];
-            }
-          }
-
-          data.cell.styles.fillColor = cellColor;
-          data.cell.text = [''];
-        }
+    currentRecords.forEach(r => {
+      const uid = r.user_id;
+      if (grouped[uid] && r.status !== 'Absent') {
+        grouped[uid].total_hours += parseFloat(r.total_hours || 0);
       }
     });
 
-    const finalY = doc.lastAutoTable.finalY || 40;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "italic");
-    doc.setTextColor(50, 50, 50);
+    const tableColumn = ["NAME", "TOTAL HRS", "TOTAL RATE", "EARNINGS"];
 
-    doc.setFillColor(255, 235, 59); // Yellow
-    doc.rect(14, finalY + 10, 5, 5, 'F');
-    doc.text("* Alternate Saturdays or Sundays", 22, finalY + 14);
+    let grandTotalHrs = 0;
+    let grandTotalEarnings = 0;
 
-    doc.setFillColor(207, 226, 243); // Light Blue
-    doc.rect(14, finalY + 18, 5, 5, 'F');
-    doc.text("* Available at warehouse when needed", 22, finalY + 22);
+    const tableRows = Object.values(grouped).map(record => {
+      const hrs = parseFloat(record.total_hours || 0);
+      const rate = parseFloat(record.hourly_rate || 0);
+      const earnings = hrs * rate;
+      grandTotalHrs += hrs;
+      grandTotalEarnings += earnings;
+      return [
+        record.full_name,
+        hrs > 0 ? formatHoursDuration(hrs) : '0h',
+        `$${rate.toFixed(2)}`,
+        `$${earnings.toFixed(2)}`
+      ];
+    });
 
-    doc.setFillColor(147, 196, 125); // Green
-    doc.rect(14, finalY + 26, 5, 5, 'F');
-    doc.text("* Regular Work Schedule", 22, finalY + 30);
+    // Grand total row
+    tableRows.push([
+      "GRAND TOTAL",
+      formatHoursDuration(grandTotalHrs),
+      "",
+      `$${grandTotalEarnings.toFixed(2)}`
+    ]);
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 40,
+      theme: 'grid',
+      headStyles: { fillColor: [200, 240, 210], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      bodyStyles: { textColor: [0, 0, 0], halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      alternateRowStyles: { fillColor: [255, 255, 255] },
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 6, fontStyle: 'bold', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      didParseCell: function (data) {
+        if (data.row.raw[0] === 'GRAND TOTAL') {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [200, 240, 210];
+        }
+      }
+    });
 
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -757,9 +744,9 @@ const DtrPage = () => {
     currentRecords.forEach(r => {
       const uid = r.user_id;
       if (!grouped[uid]) {
-        grouped[uid] = { 
-          ...r, 
-          total_hours: 0, 
+        grouped[uid] = {
+          ...r,
+          total_hours: 0,
           status: 'Present',
           full_name: r.full_name || employees.find(e => e.id == uid)?.full_name || user.full_name
         };
@@ -850,7 +837,7 @@ const DtrPage = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Daily Time Record</h1>
-          <p className="page-subtitle">Track attendance and earnings.</p>
+          <p className="page-subtitle">Track attendance and manage schedules</p>
         </div>
 
         <div className="action-buttons">
@@ -1125,23 +1112,23 @@ const DtrPage = () => {
                     <span className="summary-label">Status:</span>
                     <span className={`summary-value ${(() => {
                       if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return 'status-present';
-                      
+
                       const targetId = displayUser ? displayUser.id : user.id;
                       const todayEvents = events.filter(e => e.event_date === todayDateStr && (e.user_id == targetId || e.user_id == 0));
                       const approvedHoliday = todayEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'));
                       const approvedLeave = todayEvents.find(e => e.status === 'approved' && e.event_type === 'VL');
-                      
+
                       if (approvedHoliday || approvedLeave) return 'status-present'; // Just to not show red
                       return 'status-absent';
                     })()}`}>
                       {(() => {
                         if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return displayTodayRecord.status.toLowerCase();
-                        
+
                         const targetId = displayUser ? displayUser.id : user.id;
                         const todayEvents = events.filter(e => e.event_date === todayDateStr && (e.user_id == targetId || e.user_id == 0));
                         const approvedHoliday = todayEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'));
                         const approvedLeave = todayEvents.find(e => e.status === 'approved' && e.event_type === 'VL');
-                        
+
                         if (approvedHoliday) return 'holiday';
                         if (approvedLeave) return 'approved leave';
                         return 'absent';
@@ -1239,7 +1226,9 @@ const DtrPage = () => {
                             const row = dailyRecords[0];
                             const targetUserId = displayUser.id;
 
-                            // Check if this date is covered by an approved leave request
+                            // Check if this date is covered by an approved leave request.
+                            // Only apply virtual leave status when there is NO actual DTR row for this day,
+                            // so that admin edits (which create/update a row) always take precedence.
                             const approvedLeaveForDay = leaveRequests.find(lr =>
                               String(lr.user_id) === String(targetUserId) &&
                               dayObj.dateStr >= lr.start_date &&
@@ -1248,17 +1237,17 @@ const DtrPage = () => {
 
                             let virtualStatus = '';
                             if (!row) {
-                              // If covered by an approved leave request, show VACATION LEAVE
+                              // If covered by an approved leave request and no DTR row exists, show VACATION LEAVE
                               if (approvedLeaveForDay) {
                                 virtualStatus = 'VACATION LEAVE';
                               } else {
                                 const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
                                 const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
                                 const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
-                                
+
                                 // Prioritize holiday over leave for display if both exist, or just use the first approved
-                                const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL')) 
-                                              || dailyEvents.find(e => e.status === 'approved');
+                                const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'))
+                                  || dailyEvents.find(e => e.status === 'approved');
 
                                 if (approved) {
                                   if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
@@ -1271,6 +1260,7 @@ const DtrPage = () => {
                                 }
                               }
                             }
+                            // If a real DTR row exists, it always wins — never overlay leave/event virtualStatus on top of it.
 
                             const hrs = row ? parseFloat(row.total_hours) || 0 : 0;
                             const rate = row ? (parseFloat(row.hourly_rate) || parseFloat(displayUser.hourly_rate) || 0) : 0;
