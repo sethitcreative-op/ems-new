@@ -10,6 +10,7 @@ const ScheduleTrackerPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -50,6 +51,9 @@ const ScheduleTrackerPage = () => {
     if (selectedEmployee) {
       filtered = filtered.filter(evt => evt.user_name === selectedEmployee);
     }
+    if (selectedCategory) {
+      filtered = filtered.filter(evt => evt.event_type === selectedCategory);
+    }
     if (searchTerm) {
       const lowercasedTerm = searchTerm.toLowerCase();
       filtered = filtered.filter(evt => 
@@ -79,7 +83,7 @@ const ScheduleTrackerPage = () => {
 
     setFilteredEvents(filtered);
     setCurrentPage(1);
-  }, [searchTerm, selectedEmployee, events, sortConfig, selectedMonth]);
+  }, [searchTerm, selectedEmployee, selectedCategory, events, sortConfig, selectedMonth]);
 
   // Pagination calculations
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -98,6 +102,7 @@ const ScheduleTrackerPage = () => {
   };
 
   const uniqueEmployees = [...new Set(events.map(e => e.user_name))];
+  const uniqueCategories = [...new Set(events.map(e => e.event_type))];
 
   const renderProfilePicture = (path) => {
     if (!path) return null;
@@ -266,6 +271,16 @@ const ScheduleTrackerPage = () => {
             <option value="">All Employees</option>
             {uniqueEmployees.map(emp => (
               <option key={emp} value={emp}>{emp}</option>
+            ))}
+          </select>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: '8px', padding: '8px 16px', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none', cursor: 'pointer' }}
+          >
+            <option value="">All Categories</option>
+            {uniqueCategories.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
           

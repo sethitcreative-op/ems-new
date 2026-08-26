@@ -115,6 +115,20 @@
   letter-spacing: -1px;
 }
 
+.animated-title {
+  background: linear-gradient(90deg,
+      #ffffff 0%,
+      #93c5fd 25%,
+      #b67b79 50%,
+      #93c5fd 75%,
+      #ffffff 100%);
+  background-size: 250% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: titleShimmer 10s linear infinite;
+}
+
 .brand-subtitle {
   font-size: 1.2rem;
   color: #cbd5e1;
@@ -255,6 +269,20 @@
   font-size: 0.95rem;
   text-align: center;
   animation: shake 0.5s cubic-bezier(.36, .07, .19, .97) both;
+}
+
+.forgot-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  color: #3b82f6;
+  padding: 13px 16px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .login-form {
@@ -433,6 +461,16 @@
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes titleShimmer {
+  0% {
+    background-position: 250% center;
+  }
+
+  100% {
+    background-position: -250% center;
   }
 }
 

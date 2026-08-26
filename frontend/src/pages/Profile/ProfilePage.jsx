@@ -21,7 +21,9 @@ const ProfilePage = () => {
     username: '',
     full_name: '',
     password: '',
-    sex: ''
+    sex: '',
+    phone_code: '+1',
+    phone_number: ''
   });
   const [profilePictureFile, setProfilePictureFile] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
@@ -53,11 +55,26 @@ const ProfilePage = () => {
   useEffect(() => {
     if (location.state?.openEditModal && user?.role === 'admin') {
       if (user) {
+        let pCode = '+1';
+        let pNum = '';
+        if (user.phone) {
+          if (user.phone.startsWith('+63 ')) {
+            pCode = '+63';
+            pNum = user.phone.substring(4);
+          } else if (user.phone.startsWith('+1 ')) {
+            pCode = '+1';
+            pNum = user.phone.substring(3);
+          } else {
+            pNum = user.phone;
+          }
+        }
         setFormData({
           username: user.username,
           full_name: user.full_name,
           password: '',
-          sex: user.sex || ''
+          sex: user.sex || '',
+          phone_code: pCode,
+          phone_number: pNum
         });
         setProfilePictureFile(null);
         setPreviewImage(user.profile_picture || null);
@@ -77,11 +94,26 @@ const ProfilePage = () => {
   }
 
   const openEditModal = () => {
+    let pCode = '+1';
+    let pNum = '';
+    if (user.phone) {
+      if (user.phone.startsWith('+63 ')) {
+        pCode = '+63';
+        pNum = user.phone.substring(4);
+      } else if (user.phone.startsWith('+1 ')) {
+        pCode = '+1';
+        pNum = user.phone.substring(3);
+      } else {
+        pNum = user.phone;
+      }
+    }
     setFormData({
       username: user.username,
       full_name: user.full_name,
       password: '',
-      sex: user.sex || ''
+      sex: user.sex || '',
+      phone_code: pCode,
+      phone_number: pNum
     });
     setProfilePictureFile(null);
     setPreviewImage(user.profile_picture || null);
@@ -106,6 +138,8 @@ const ProfilePage = () => {
       if (formData.password) {
         data.append('password', formData.password);
       }
+      const fullPhone = formData.phone_number ? `${formData.phone_code} ${formData.phone_number}` : '';
+      data.append('phone', fullPhone);
       
       if (profilePictureFile) {
         data.append('profile_picture', profilePictureFile);
@@ -149,6 +183,17 @@ const ProfilePage = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handlePhoneChange = (e) => {
+    const rawValue = e.target.value.replace(/[^\d]/g, '');
+    let formattedValue = rawValue;
+    if (rawValue.length > 3 && rawValue.length <= 6) {
+      formattedValue = `${rawValue.slice(0, 3)}-${rawValue.slice(3)}`;
+    } else if (rawValue.length > 6) {
+      formattedValue = `${rawValue.slice(0, 3)}-${rawValue.slice(3, 6)}-${rawValue.slice(6, 10)}`;
+    }
+    setFormData({ ...formData, phone_number: formattedValue });
   };
 
   const renderProfilePicture = (pic) => {
@@ -512,79 +557,113 @@ const ProfilePage = () => {
       {/* ── Edit Modal ── */}
       {showEditModal && (
         <div className="modal-backdrop" onClick={() => setShowEditModal(false)}>
-          <div className="edit-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '600px', padding: '20px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header" style={{ marginBottom: '16px' }}>
-              <h3>Edit Profile</h3>
-              <button type="button" className="modal-close" onClick={() => setShowEditModal(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            
-            {error && <div className="modal-error">{error}</div>}
-            
-            <form onSubmit={handleSubmit} className="modal-form">
-              <div className="modal-avatar-section" style={{ marginBottom: '12px' }}>
-                <div className="modal-avatar-preview">
+          <div className="modal-content glass" onClick={e => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'row', width: '850px', maxWidth: '95vw', padding: 0, maxHeight: '85vh', overflow: 'hidden', borderRadius: '16px' }}>
+
+            {/* Left Sidebar */}
+            <div style={{ flex: '0 0 250px', borderRight: '1px solid var(--card-border)', padding: '24px', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--sidebar-bg, rgba(0,0,0,0.02))' }}>
+              <div style={{ marginBottom: '32px' }}>
+                <h3 className="modal-title" style={{ margin: 0 }}>Edit Profile</h3>
+              </div>
+
+              <div className="modal-avatar-section" style={{ marginBottom: '32px', textAlign: 'center' }}>
+                <div className="modal-avatar-preview" style={{ width: '80px', height: '80px', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: '2px solid var(--card-border)', overflow: 'hidden' }}>
                    {previewImage ? (
-                     <img src={renderProfilePicture(previewImage)} alt="Preview" />
+                     <img src={renderProfilePicture(previewImage)} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                    ) : (
                      <User size={36} style={{ opacity: 0.4 }} />
                    )}
                 </div>
-                <label className="modal-avatar-upload">
+                <label className="modal-avatar-upload" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--primary-color, #3b82f6)', cursor: 'pointer', fontWeight: '500' }}>
                   Change Picture
                   <input type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
                 </label>
               </div>
+            </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div className="modal-field">
-                  <label>Full Name</label>
-                  <input 
-                    type="text" 
-                    className="input-field" 
-                    value={formData.full_name} 
-                    onChange={e => setFormData({...formData, full_name: e.target.value})} 
-                    required 
-                  />
-                </div>
-                <div className="modal-field">
-                  <label>Username</label>
-                  <input 
-                    type="text" 
-                    className="input-field" 
-                    value={formData.username} 
-                    onChange={e => setFormData({...formData, username: e.target.value})} 
-                    required 
-                  />
-                </div>
-                <div className="modal-field">
-                  <label>Sex</label>
-                  <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
-                    <option value="">Select Sex</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div className="modal-field">
-                  <label>New Password <span className="field-hint">(leave blank to keep current)</span></label>
-                  <input 
-                    type="password" 
-                    className="input-field" 
-                    value={formData.password} 
-                    onChange={e => setFormData({...formData, password: e.target.value})} 
-                  />
-                </div>
+            {/* Right Content */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', maxHeight: '100%', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '16px 24px 0' }}>
+                <button type="button" className="modal-close-btn" onClick={() => setShowEditModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                  <X size={24} />
+                </button>
               </div>
-              <button type="submit" className="modal-submit-btn" disabled={loading}>
-                {loading ? (
-                  <><span className="spinner"></span> Saving...</>
-                ) : (
-                  'Save Changes'
-                )}
-              </button>
-            </form>
+              
+              <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px', display: 'flex', flexDirection: 'column' }}>
+                {error && <div className="modal-error" style={{ marginBottom: '16px' }}>{error}</div>}
+                
+                <div className="form-section animate-panel">
+                  <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Profile Details</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div className="modal-field">
+                      <label>Full Name</label>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        value={formData.full_name} 
+                        onChange={e => setFormData({...formData, full_name: e.target.value})} 
+                        required 
+                      />
+                    </div>
+                    <div className="modal-field">
+                      <label>Username</label>
+                      <input 
+                        type="text" 
+                        className="input-field" 
+                        value={formData.username} 
+                        onChange={e => setFormData({...formData, username: e.target.value})} 
+                        required 
+                      />
+                    </div>
+                    <div className="modal-field">
+                      <label>Sex</label>
+                      <select className="input-field" value={formData.sex} onChange={e => setFormData({...formData, sex: e.target.value})}>
+                        <option value="">Select Sex</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="modal-field">
+                      <label>Phone Number</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <select 
+                          className="input-field" 
+                          style={{ width: '100px', flexShrink: 0, padding: '10px 8px' }}
+                          value={formData.phone_code} 
+                          onChange={e => setFormData({ ...formData, phone_code: e.target.value })}
+                        >
+                          <option value="+1">US (+1)</option>
+                          <option value="+63">PH (+63)</option>
+                        </select>
+                        <input 
+                          type="text" 
+                          className="input-field" 
+                          placeholder="000-000-0000"
+                          value={formData.phone_number} 
+                          onChange={handlePhoneChange} 
+                        />
+                      </div>
+                    </div>
+                    <div className="modal-field" style={{ gridColumn: '1 / -1' }}>
+                      <label>New Password <span className="field-hint">(leave blank to keep current)</span></label>
+                      <input 
+                        type="password" 
+                        className="input-field" 
+                        value={formData.password} 
+                        onChange={e => setFormData({...formData, password: e.target.value})} 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 'auto', paddingTop: '32px', display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center' }}>
+                  <button type="button" className="btn btn-ghost" onClick={() => setShowEditModal(false)} style={{ padding: '10px 24px', borderRadius: '8px' }}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px', borderRadius: '8px' }}>
+                    {loading ? <><span className="spinner"></span> Saving...</> : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

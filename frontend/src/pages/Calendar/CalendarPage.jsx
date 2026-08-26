@@ -36,6 +36,7 @@ const CalendarPage = () => {
   const [selectedDates, setSelectedDates] = useState([]); // for 'pick' mode
   const [miniCalMonth, setMiniCalMonth] = useState(new Date());
   const [employees, setEmployees] = useState([]);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user'));
   const isAdmin = user?.role === 'admin';
@@ -83,8 +84,20 @@ const CalendarPage = () => {
     fetchEvents();
     if (isAdmin) {
       fetchEmployees();
+      fetchAttendanceRecords();
     }
   }, [isAdmin]);
+
+  const fetchAttendanceRecords = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/dtr.php?action=get_records`);
+      if (res.data.status === 'success') {
+        setAttendanceRecords(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch attendance records for PDF:', err);
+    }
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -709,6 +722,14 @@ const CalendarPage = () => {
     return `${evt.event_type === 'Other' ? '' : evt.event_type + ' - '}${evt.user_name} (${evt.title})`;
   };
 
+  const getScheduleOptionClass = (opt) => {
+    if (!opt || opt === 'none') return 'none';
+    const lowerOpt = opt.toLowerCase();
+    if (lowerOpt.includes('alternate')) return 'alternate';
+    if (lowerOpt.includes('warehouse')) return 'warehouse';
+    return 'none';
+  };
+
   // Render a combined list of events + holidays for a date (used in all views)
   const getCombinedItemsForDate = (date) => {
     const dayEvents = getEventsForDate(date);
@@ -838,8 +859,8 @@ const CalendarPage = () => {
                     body: tableRows,
                     startY: 40,
                     theme: 'grid',
-                    headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [200,200,200] },
-                    bodyStyles: { textColor: [51,65,85], halign: 'center', lineWidth: 0.1, lineColor: [200,200,200] },
+                    headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0,0,0] },
+                    bodyStyles: { textColor: [51,65,85], halign: 'center', lineWidth: 0.5, lineColor: [0,0,0] },
                     styles: { font: 'helvetica', fontSize: 10, cellPadding: 4, minCellHeight: 16 },
                     didParseCell: function(data) {
                       if (data.section === 'body' && data.column.index > 0) {
@@ -849,13 +870,23 @@ const CalendarPage = () => {
                         const emp = employees.find(e => e.full_name === empName);
                         let cellColor = [255, 255, 255];
                         if (emp) {
+                          // Check if this date is marked as Rescheduled in attendance
+                          const isRescheduled = attendanceRecords.some(
+                            r => String(r.user_id) === String(emp.id) && r.date === ds && r.status === 'Rescheduled'
+                          );
+                          if (isRescheduled) {
+                            // Rescheduled dates appear blank (white) in the schedule
+                            data.cell.styles.fillColor = [255, 255, 255];
+                            data.cell.text = [''];
+                            return;
+                          }
                           const evt = events.find(e => String(e.user_id) === String(emp.id) && e.event_date.split(' ')[0] === ds && e.status === 'approved');
                           if (evt && evt.schedule_option && evt.schedule_option !== 'none') {
                             const opt = evt.schedule_option.toLowerCase();
                             if (opt.includes('alternate') || opt.includes('yellow')) {
                               cellColor = [255, 235, 59];
                             } else if (opt.includes('warehouse') || opt.includes('gray') || opt.includes('blue')) {
-                              cellColor = [207, 226, 243];
+                              cellColor = [180, 180, 180];
                             } else {
                               cellColor = [220, 220, 220];
                             }
@@ -867,8 +898,18 @@ const CalendarPage = () => {
                               cellColor = [147, 196, 125];
                             }
                           }
-                          if (evt && (evt.event_type === 'VL' || evt.event_type === 'HL' || evt.event_type === 'Holiday' || evt.event_type === 'SL' || evt.event_type === 'PDO')) {
-                            cellColor = [255, 255, 255];
+                          
+                          const isGlobalHoliday = holidays.some(h => h.holiday_date === ds);
+                          if (isGlobalHoliday || (evt && (evt.event_type === 'Holiday' || evt.event_type === 'HL'))) {
+                            data.cell.styles.fillColor = [239, 100, 100]; // red for holiday
+                            data.cell.text = [''];
+                            return;
+                          }
+                          
+                          if (evt && (evt.event_type === 'VL' || evt.event_type === 'SL' || evt.event_type === 'PDO')) {
+                            data.cell.styles.fillColor = [135, 206, 235]; // sky blue for vacation leave
+                            data.cell.text = [''];
+                            return;
                           }
                         }
                         data.cell.styles.fillColor = cellColor;
@@ -880,15 +921,26 @@ const CalendarPage = () => {
                   doc.setFontSize(10);
                   doc.setFont('helvetica', 'italic');
                   doc.setTextColor(50, 50, 50);
-                  doc.setFillColor(255, 235, 59);
-                  doc.rect(14, finalY + 10, 5, 5, 'F');
-                  doc.text('* Alternate Saturdays or Sundays', 22, finalY + 14);
-                  doc.setFillColor(207, 226, 243);
-                  doc.rect(14, finalY + 18, 5, 5, 'F');
-                  doc.text('* Available at warehouse when needed', 22, finalY + 22);
+                  // Legend: Regular Work Schedule (green)
                   doc.setFillColor(147, 196, 125);
+                  doc.rect(14, finalY + 10, 5, 5, 'F');
+                  doc.text('* Regular Work Schedule', 22, finalY + 14);
+                  // Legend: Alternate Sat/Sun (yellow)
+                  doc.setFillColor(255, 235, 59);
+                  doc.rect(14, finalY + 18, 5, 5, 'F');
+                  doc.text('* Alternate Saturdays or Sundays', 22, finalY + 22);
+                  // Legend: Available at warehouse (gray)
+                  doc.setFillColor(180, 180, 180);
                   doc.rect(14, finalY + 26, 5, 5, 'F');
-                  doc.text('* Regular Work Schedule', 22, finalY + 30);
+                  doc.text('* Available at warehouse when needed', 22, finalY + 30);
+                  // Legend: Vacation (sky blue)
+                  doc.setFillColor(135, 206, 235);
+                  doc.rect(14, finalY + 34, 5, 5, 'F');
+                  doc.text('* Vacation', 22, finalY + 38);
+                  // Legend: Holiday (red)
+                  doc.setFillColor(239, 100, 100);
+                  doc.rect(14, finalY + 42, 5, 5, 'F');
+                  doc.text('* Holiday', 22, finalY + 46);
                   const pageCount = doc.internal.getNumberOfPages();
                   for (let i = 1; i <= pageCount; i++) {
                     doc.setPage(i);
@@ -978,7 +1030,7 @@ const CalendarPage = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
+                            className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${getScheduleOptionClass(item.schedule_option)} ${item.status === 'pending' ? 'pending' : ''}`}
                             onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                             title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
@@ -1041,7 +1093,7 @@ const CalendarPage = () => {
                         return (
                           <div
                             key={item.id}
-                            className={`event-badge week-event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
+                            className={`event-badge week-event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${getScheduleOptionClass(item.schedule_option)} ${item.status === 'pending' ? 'pending' : ''}`}
                             onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                             title={`${item.title} - ${item.user_name} (${item.status})`}
                           >
@@ -1089,22 +1141,44 @@ const CalendarPage = () => {
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{emp.employee_id || emp.id}</div>
                       </td>
                       {weekCells.map((cell, idx) => {
+                        const cellDateStr = `${cell.date.getFullYear()}-${String(cell.date.getMonth() + 1).padStart(2, '0')}-${String(cell.date.getDate()).padStart(2, '0')}`;
+                        
+                        const dayHolidays = holidays
+                          .filter(h => h.holiday_date === cellDateStr)
+                          .map(h => ({
+                            id: `holiday-${h.id}`,
+                            _isHoliday: true,
+                            title: h.name,
+                            event_type: 'holiday',
+                            status: 'approved',
+                            user_name: 'US Holiday'
+                          }));
+                          
                         const dayEvents = events.filter(e => {
                           if (!e.event_date) return false;
-                          const cellDateStr = `${cell.date.getFullYear()}-${String(cell.date.getMonth() + 1).padStart(2, '0')}-${String(cell.date.getDate()).padStart(2, '0')}`;
                           const dateMatch = e.event_date.split(' ')[0] === cellDateStr;
                           return dateMatch && String(e.user_id) === String(emp.id);
                         });
+                        
+                        const combinedEvents = [...dayHolidays, ...dayEvents];
                         const isToday = new Date().toDateString() === cell.date.toDateString();
                         return (
                           <td key={idx} className={`admin-week-cell ${isToday ? 'today-cell' : ''}`} onClick={() => { setSelectedDateForModal(cell.date); setShowDayModal(true); }}>
                             <div className="admin-cell-events">
-                              {dayEvents.map(item => {
+                              {combinedEvents.map(item => {
+                                if (item._isHoliday) {
+                                  return (
+                                    <div key={item.id} className="event-badge week-event-badge event-type-holiday" title={item.title}>
+                                      <span className="event-icon">🎄</span>
+                                      <span className="event-text">{item.title}</span>
+                                    </div>
+                                  );
+                                }
                                 const Icon = getEventIcon(item);
                                 return (
                                   <div
                                     key={item.id}
-                                    className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${item.schedule_option || 'none'} ${item.status === 'pending' ? 'pending' : ''}`}
+                                    className={`event-badge event-status-${item.status} event-type-${item.event_type} schedule-option-${getScheduleOptionClass(item.schedule_option)} ${item.status === 'pending' ? 'pending' : ''}`}
                                     onClick={(e) => { e.stopPropagation(); handleEventClick(item); }}
                                     title={`${item.title} (${item.status})`}
                                     style={{ margin: '2px 0', fontSize: '0.75rem', padding: '2px 6px', display: 'inline-flex' }}

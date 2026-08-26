@@ -618,7 +618,8 @@ const DtrPage = () => {
       grouped[emp.id] = {
         user_id: emp.id,
         full_name: emp.full_name,
-        hourly_rate: emp.hourly_rate,
+        // Ensure hourly_rate is a valid number from the employees list
+        hourly_rate: parseFloat(emp.hourly_rate || 0),
         total_hours: 0,
       };
     });
@@ -633,6 +634,7 @@ const DtrPage = () => {
     const tableColumn = ["NAME", "TOTAL HRS", "TOTAL RATE", "EARNINGS"];
 
     let grandTotalHrs = 0;
+    let grandTotalRate = 0;
     let grandTotalEarnings = 0;
 
     const tableRows = Object.values(grouped).map(record => {
@@ -640,6 +642,7 @@ const DtrPage = () => {
       const rate = parseFloat(record.hourly_rate || 0);
       const earnings = hrs * rate;
       grandTotalHrs += hrs;
+      grandTotalRate += rate;
       grandTotalEarnings += earnings;
       return [
         record.full_name,
@@ -653,7 +656,7 @@ const DtrPage = () => {
     tableRows.push([
       "GRAND TOTAL",
       formatHoursDuration(grandTotalHrs),
-      "",
+      `$${grandTotalRate.toFixed(2)}`,
       `$${grandTotalEarnings.toFixed(2)}`
     ]);
 
@@ -743,13 +746,19 @@ const DtrPage = () => {
     const grouped = {};
     currentRecords.forEach(r => {
       const uid = r.user_id;
+      // Always resolve hourly_rate from the employees list for accuracy
+      const empRate = parseFloat(employees.find(e => String(e.id) === String(uid))?.hourly_rate || r.hourly_rate || 0);
       if (!grouped[uid]) {
         grouped[uid] = {
           ...r,
+          hourly_rate: empRate,
           total_hours: 0,
           status: 'Present',
-          full_name: r.full_name || employees.find(e => e.id == uid)?.full_name || user.full_name
+          full_name: r.full_name || employees.find(e => String(e.id) === String(uid))?.full_name || user.full_name
         };
+      } else {
+        // Ensure hourly_rate is always set even if first record didn't have it
+        if (!grouped[uid].hourly_rate) grouped[uid].hourly_rate = empRate;
       }
       if (r.status !== 'Absent') {
         grouped[uid].total_hours += parseFloat(r.total_hours || 0);
@@ -758,17 +767,19 @@ const DtrPage = () => {
     let recordsToProcess = Object.values(grouped);
 
     let grandTotalHrs = 0;
+    let grandTotalRate = 0;
     let grandTotalEarnings = 0;
 
     const tableRows = [];
     recordsToProcess.forEach(record => {
       const rowData = [];
       const recordHrs = parseFloat(record.total_hours || 0);
-      const recordRate = parseFloat(record.hourly_rate || parseFloat(employees.find(e => e.id == record.user_id)?.hourly_rate) || 0);
+      const recordRate = parseFloat(record.hourly_rate || employees.find(e => String(e.id) === String(record.user_id))?.hourly_rate || 0);
       const recordEarnings = recordHrs * recordRate;
 
       if (record.status !== 'Absent') {
         grandTotalHrs += recordHrs;
+        grandTotalRate += recordRate;
         grandTotalEarnings += recordEarnings;
       }
 
@@ -794,7 +805,8 @@ const DtrPage = () => {
     dataKeys.forEach((key, index) => {
       if (index === 0) grandTotalRow.push("GRAND TOTAL");
       else if (key === 'total_hours') grandTotalRow.push(formatHoursDuration(grandTotalHrs));
-      else if (key === 'hourly_rate' || key === 'earnings') grandTotalRow.push(`$${grandTotalEarnings.toFixed(2)}`);
+      else if (key === 'hourly_rate') grandTotalRow.push(`$${grandTotalRate.toFixed(2)}`);
+      else if (key === 'earnings') grandTotalRow.push(`$${grandTotalEarnings.toFixed(2)}`);
       else grandTotalRow.push("");
     });
     tableRows.push(grandTotalRow);
@@ -1274,6 +1286,7 @@ const DtrPage = () => {
 
                             let statusColor = 'inherit';
                             if (row?.status === 'Absent') statusColor = 'var(--danger)';
+                            else if (row?.status === 'Rescheduled') statusColor = 'var(--warning, #f59e0b)';
                             else if (isSpecialStatus) statusColor = 'var(--primary)';
                             else if (virtualStatus === 'VACATION LEAVE') statusColor = 'var(--primary)';
                             else if (virtualStatus) statusColor = 'var(--text-muted)';
@@ -1405,11 +1418,11 @@ const DtrPage = () => {
                 </div>
                 <div className="premium-select-group">
                   <label>AM IN Time</label>
-                  <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday'].includes(editModal.status)} />
+                  <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
                 </div>
                 <div className="premium-select-group">
                   <label>PM OUT Time</label>
-                  <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday'].includes(editModal.status)} />
+                  <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
                 </div>
               </div>
               <div className="dtr-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>

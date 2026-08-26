@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Users, UserPlus, Trash2, Edit2, X, Calendar, Clock, DollarSign,
-  Briefcase, Search, Download, CheckCircle, ChevronDown, Building, FileText, User, Eye, EyeOff, LayoutGrid, List
+  Briefcase, Search, Download, CheckCircle, ChevronDown, Building, FileText, User, Eye, EyeOff, LayoutGrid, List, Crown
 } from 'lucide-react';
 import './EmployeeManagement.css';
 import API_BASE from '../../config/api';
@@ -136,7 +136,8 @@ const EmployeeManagement = () => {
     hourly_rate: '',
     role: 'user',
     email: '',
-    phone: '',
+    phone_code: '+1',
+    phone_number: '',
     address: '',
     id_number: '',
     sex: ''
@@ -154,6 +155,17 @@ const EmployeeManagement = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handlePhoneChange = (e) => {
+    const rawValue = e.target.value.replace(/[^\d]/g, '');
+    let formattedValue = rawValue;
+    if (rawValue.length > 3 && rawValue.length <= 6) {
+      formattedValue = `${rawValue.slice(0, 3)}-${rawValue.slice(3)}`;
+    } else if (rawValue.length > 6) {
+      formattedValue = `${rawValue.slice(0, 3)}-${rawValue.slice(3, 6)}-${rawValue.slice(6, 10)}`;
+    }
+    setFormData({ ...formData, phone_number: formattedValue });
   };
 
   const handleSubmit = async (e) => {
@@ -174,7 +186,8 @@ const EmployeeManagement = () => {
       data.append('hourly_rate', formData.hourly_rate || '0');
       data.append('role', formData.role);
       data.append('email', formData.email);
-      data.append('phone', formData.phone);
+      const fullPhone = formData.phone_number ? `${formData.phone_code} ${formData.phone_number}` : '';
+      data.append('phone', fullPhone);
       data.append('address', formData.address);
       data.append('id_number', formData.id_number);
       if (formData.sex) {
@@ -214,7 +227,7 @@ const EmployeeManagement = () => {
           }
         }
 
-        setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
+        setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone_code: '+1', phone_number: '', address: '', id_number: '', sex: '' });
         setProfilePictureFile(null);
         setPreviewImage(null);
         setEditingId(null);
@@ -233,6 +246,20 @@ const EmployeeManagement = () => {
 
   const handleEditClick = (emp) => {
     setFormError('');
+    let pCode = '+1';
+    let pNum = '';
+    if (emp.phone) {
+      if (emp.phone.startsWith('+63 ')) {
+        pCode = '+63';
+        pNum = emp.phone.substring(4);
+      } else if (emp.phone.startsWith('+1 ')) {
+        pCode = '+1';
+        pNum = emp.phone.substring(3);
+      } else {
+        pNum = emp.phone;
+      }
+    }
+
     setFormData({
       username: emp.username || '',
       password: '',
@@ -240,7 +267,8 @@ const EmployeeManagement = () => {
       hourly_rate: emp.hourly_rate || '',
       role: emp.role || 'user',
       email: emp.email || '',
-      phone: emp.phone || '',
+      phone_code: pCode,
+      phone_number: pNum,
       address: emp.address || '',
       id_number: emp.id_number || '',
       sex: emp.sex || ''
@@ -255,7 +283,7 @@ const EmployeeManagement = () => {
   const toggleForm = () => {
     setFormError('');
     if (editingId) {
-      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
+      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone_code: '+1', phone_number: '', address: '', id_number: '', sex: '' });
       setEditingId(null);
     }
     setProfilePictureFile(null);
@@ -269,7 +297,7 @@ const EmployeeManagement = () => {
     setShowPassword(false);
     setIsModalOpen(false);
     setTimeout(() => {
-      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone: '', address: '', id_number: '', sex: '' });
+      setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone_code: '+1', phone_number: '', address: '', id_number: '', sex: '' });
       setProfilePictureFile(null);
       setPreviewImage(null);
       setEditingId(null);
@@ -583,7 +611,24 @@ const EmployeeManagement = () => {
                       </div>
                       <div className="modal-field">
                         <label>Phone Number</label>
-                        <input type="text" className="input-field" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select 
+                            className="input-field" 
+                            style={{ width: '100px', flexShrink: 0, padding: '10px 8px' }}
+                            value={formData.phone_code} 
+                            onChange={e => setFormData({ ...formData, phone_code: e.target.value })}
+                          >
+                            <option value="+1">US (+1)</option>
+                            <option value="+63">PH (+63)</option>
+                          </select>
+                          <input 
+                            type="text" 
+                            className="input-field" 
+                            placeholder="000-000-0000"
+                            value={formData.phone_number} 
+                            onChange={handlePhoneChange} 
+                          />
+                        </div>
                       </div>
                       <div className="modal-field" style={{ gridColumn: '1 / -1' }}>
                         <label>Address</label>
@@ -669,11 +714,13 @@ const EmployeeManagement = () => {
                     </td>
                     <td data-label="Role">
                       <span className={`mgmt-role-badge ${emp.role}`}>
-                        <Users size={14} className="role-icon" />
+                        {emp.role === 'admin' ? <Crown size={14} className="role-icon" /> : <Users size={14} className="role-icon" />}
                         {emp.role === 'admin' ? 'ADMIN' : 'AGENT'}
                       </span>
                     </td>
-                    <td data-label="Rate" className="rate-cell">${emp.hourly_rate}/hr</td>
+                    <td data-label="Rate" className="rate-cell">
+                      {parseFloat(emp.hourly_rate) === 0 || !emp.hourly_rate ? '-- --' : `$${emp.hourly_rate}/hr`}
+                    </td>
                     <td data-label="Status">
                       <span className="status-badge-active">
                         <CheckCircle size={14} /> ACTIVE
@@ -708,7 +755,7 @@ const EmployeeManagement = () => {
           <div className="mgmt-grid" style={{ padding: '24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
             {filteredEmployees.length > 0 ? (
               filteredEmployees.map((emp, index) => (
-                <div key={index} className="team-card" onClick={() => handleViewDetails(emp)}>
+                <div key={index} className="team-card" onClick={() => handleViewDetails(emp)} style={{ animation: `fade-in-up-emp 0.5s ease ${index * 0.05}s both` }}>
                   <div className="team-card-avatar">
                     {emp.profile_picture ? (
                       <img src={renderProfilePicture(emp.profile_picture)} alt={emp.full_name} />
@@ -719,8 +766,8 @@ const EmployeeManagement = () => {
                   <div className="team-card-info">
                     <h3>{emp.full_name}</h3>
                     <p>@{emp.username}</p>
-                    <span className="team-role-badge">
-                      <Users size={12}/> {emp.role === 'admin' ? 'Administrator' : 'Agent'}
+                    <span className={`team-role-badge ${emp.role}`}>
+                      {emp.role === 'admin' ? <Crown size={12}/> : <Users size={12}/>} {emp.role === 'admin' ? 'Administrator' : 'Agent'}
                     </span>
                   </div>
                   <div className="team-card-actions" style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px' }}>
@@ -759,11 +806,15 @@ const EmployeeManagement = () => {
                   <h3 className="modal-title">{selectedEmployeeForView.full_name}</h3>
                   <div className="emp-badges">
                     <span className={`role-badge ${selectedEmployeeForView.role}`}>
-                      <Briefcase size={12} /> {selectedEmployeeForView.role}
+                      {selectedEmployeeForView.role === 'admin' ? <Crown size={12} /> : <Briefcase size={12} />} {selectedEmployeeForView.role}
                     </span>
                     {selectedEmployeeForView.role !== 'admin' && (
                       <span className="rate-badge">
-                        <DollarSign size={12} /> {selectedEmployeeForView.hourly_rate}/hr
+                        {parseFloat(selectedEmployeeForView.hourly_rate) === 0 || !selectedEmployeeForView.hourly_rate ? (
+                          '-- --'
+                        ) : (
+                          <><DollarSign size={12} /> {selectedEmployeeForView.hourly_rate}/hr</>
+                        )}
                       </span>
                     )}
                   </div>
@@ -781,12 +832,14 @@ const EmployeeManagement = () => {
               >
                 <User size={16} /> Profile
               </button>
-              <button
-                className={`tab-btn ${activeTab === 'government' ? 'active' : ''}`}
-                onClick={() => setActiveTab('government')}
-              >
-                <FileText size={16} /> Gov ID
-              </button>
+              {selectedEmployeeForView.role !== 'admin' && (
+                <button
+                  className={`tab-btn ${activeTab === 'government' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('government')}
+                >
+                  <FileText size={16} /> Gov ID
+                </button>
+              )}
               <button
                 className={`tab-btn ${activeTab === 'dtr' ? 'active' : ''}`}
                 onClick={() => setActiveTab('dtr')}
@@ -838,14 +891,16 @@ const EmployeeManagement = () => {
                         {selectedEmployeeForView.role !== 'admin' && (
                         <div className="info-group">
                           <label>Hourly Rate</label>
-                          <p className="highlight-text">${selectedEmployeeForView.hourly_rate || '0.00'}/hr</p>
+                          <p className="highlight-text">
+                            {parseFloat(selectedEmployeeForView.hourly_rate) === 0 || !selectedEmployeeForView.hourly_rate ? '-- --' : `$${selectedEmployeeForView.hourly_rate}/hr`}
+                          </p>
                         </div>
                         )}
                       </div>
                     </div>
                   )}
 
-                  {activeTab === 'government' && (
+                  {activeTab === 'government' && selectedEmployeeForView.role !== 'admin' && (
                     <div className="details-info-panel animate-panel">
                       <div className="primary-id-section" style={{ marginBottom: '30px', padding: '20px', background: 'var(--surface-color)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                         <h4 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'var(--text-color)' }}>Primary Government ID</h4>

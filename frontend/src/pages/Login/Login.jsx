@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { Lock, Mail, Eye, EyeOff, Activity, CheckCircle } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, PhoneCall } from 'lucide-react';
 import './Login.css';
 import API_BASE from '../../config/api';
 
@@ -16,10 +16,11 @@ const Login = () => {
   const [email, setEmail] = useState(localStorage.getItem('rememberedEmail') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(!!localStorage.getItem('rememberedEmail'));
+  const [rememberMe, setRememberMe] = useState(localStorage.getItem('rememberMe') === 'true');
   const [error, setError] = useState('');
   const [bgIndex, setBgIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [showForgotMsg, setShowForgotMsg] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -32,10 +33,10 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     try {
       // Add a slight artificial delay so the user can see the loading state (system preparing)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // In a real environment, replace this with actual local IP or URL
       const response = await axios.post(`${API_BASE}/auth.php`, {
@@ -47,11 +48,13 @@ const Login = () => {
       if (response.data && response.data.status === 'success') {
         localStorage.setItem('token', response.data.token);
         localStorage.setItem('user', JSON.stringify(response.data.user));
-        
+
         if (rememberMe) {
           localStorage.setItem('rememberedEmail', email);
+          localStorage.setItem('rememberMe', 'true');
         } else {
           localStorage.removeItem('rememberedEmail');
+          localStorage.removeItem('rememberMe');
         }
 
         navigate('/dtr');
@@ -86,28 +89,13 @@ const Login = () => {
         ))}
         <div className="slideshow-overlay" />
 
-        <div className="floating-elements">
-          <div className="float-card card-1 glass">
-            <div className="card-icon"><Activity size={24} /></div>
-            <div className="card-info">
-              <h4>Active Users</h4>
-              <p>2,543</p>
-            </div>
-          </div>
-          <div className="float-card card-2 glass">
-            <div className="card-icon success"><CheckCircle size={24} /></div>
-            <div className="card-info">
-              <h4>System Status</h4>
-              <p>Online</p>
-            </div>
-          </div>
-        </div>
+
 
         <div className="brand-content">
           <div className="brand-icon-wrapper">
             <img src="/img/logo.jpg" alt="WorkTrack Logo" className="logo-image-huge" />
           </div>
-          <h1 className="brand-title">WorkTrack</h1>
+          <h1 className="brand-title animated-title">WorkTrack</h1>
           <p className="brand-subtitle">Elevate your workforce with our state-of-the-art management system.</p>
         </div>
       </div>
@@ -120,6 +108,12 @@ const Login = () => {
           </div>
 
           {error && <div className="error-alert">{error}</div>}
+          {showForgotMsg && (
+            <div className="forgot-alert">
+              <PhoneCall size={16} />
+              <span>Please contact IT Support for assistance</span>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
@@ -162,14 +156,29 @@ const Login = () => {
 
             <div className="form-actions">
               <label className="remember-me">
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRememberMe(checked);
+                    if (!checked) {
+                      localStorage.removeItem('rememberedEmail');
+                      localStorage.removeItem('rememberMe');
+                    } else {
+                      localStorage.setItem('rememberMe', 'true');
+                    }
+                  }}
                 />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="forgot-password" onClick={(e) => e.preventDefault()}>Forgot password?</a>
+              <a
+                href="#"
+                className="forgot-password"
+                onClick={(e) => { e.preventDefault(); setShowForgotMsg(prev => !prev); setError(''); }}
+              >
+                Forgot password?
+              </a>
             </div>
 
             <button type="submit" className="btn btn-primary login-btn">

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNotification } from '../../context/NotificationContext';
-import { Check, X, Calendar as CalendarIcon, List } from 'lucide-react';
+import { Check, X, Calendar as CalendarIcon, List, Pencil, Trash2 } from 'lucide-react';
 import API_BASE from '../../config/api';
+
+const LEAVE_TYPES = ['Vacation Leave', 'Sick Leave', 'Emergency Leave', 'Maternity Leave', 'Paternity Leave', 'Other'];
 
 const LeaveManagement = () => {
   const [requests, setRequests] = useState([]);
@@ -14,6 +16,13 @@ const LeaveManagement = () => {
   
   const [actionModal, setActionModal] = useState({ open: false, req: null, action: '' });
   const [remarks, setRemarks] = useState('');
+
+  // Edit modal
+  const [editModal, setEditModal] = useState({ open: false, req: null });
+  const [editForm, setEditForm] = useState({});
+
+  // Delete modal
+  const [deleteModal, setDeleteModal] = useState({ open: false, req: null });
   
   const { addNotification } = useNotification();
 
@@ -79,6 +88,80 @@ const LeaveManagement = () => {
     }
   };
 
+  // ── Edit ────────────────────────────────────────────────────────────────────
+  const openEditModal = (req) => {
+    setEditForm({
+      leave_type:    req.leave_type,
+      start_date:    req.start_date,
+      end_date:      req.end_date,
+      total_days:    req.total_days,
+      reason:        req.reason,
+      status:        req.status,
+      admin_remarks: req.admin_remarks || ''
+    });
+    setEditModal({ open: true, req });
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => {
+      const updated = { ...prev, [name]: value };
+      if ((name === 'start_date' || name === 'end_date') && updated.start_date && updated.end_date) {
+        const s = new Date(updated.start_date);
+        const en = new Date(updated.end_date);
+        const diff = Math.round((en - s) / (1000 * 60 * 60 * 24)) + 1;
+        updated.total_days = diff > 0 ? diff : 1;
+      }
+      return updated;
+    });
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const payload = {
+        action: 'update_request',
+        id: editModal.req.id,
+        user_id: editModal.req.user_id,
+        ...editForm
+      };
+      const res = await axios.put(`${API_BASE}/leaves.php`, payload);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Leave request updated successfully' });
+        setEditModal({ open: false, req: null });
+        fetchRequests();
+      } else {
+        addNotification({ type: 'error', message: res.data.message || 'Error updating request' });
+      }
+    } catch (err) {
+      console.error(err);
+      addNotification({ type: 'error', message: 'Error updating request' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Delete ──────────────────────────────────────────────────────────────────
+  const handleDeleteConfirm = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.delete(`${API_BASE}/leaves.php?id=${deleteModal.req.id}`);
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: 'Leave request deleted successfully' });
+        setDeleteModal({ open: false, req: null });
+        fetchRequests();
+      } else {
+        addNotification({ type: 'error', message: res.data.message || 'Error deleting request' });
+      }
+    } catch (err) {
+      console.error(err);
+      addNotification({ type: 'error', message: 'Error deleting request' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'approved': return <span className="event-badge" style={{ background: '#10b981', color: '#fff', padding: '4px 8px', borderRadius: '4px', fontSize: '0.85rem' }}>Approved</span>;
@@ -95,6 +178,14 @@ const LeaveManagement = () => {
     if (!dateStr) return '';
     const [y, m, d] = dateStr.split('-');
     return new Date(y, m - 1, d).toLocaleDateString();
+  };
+
+  const isPastLeave = (dateStr) => {
+    if (!dateStr) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [y, m, d] = dateStr.split('-');
+    return new Date(y, m - 1, d) < today;
   };
 
   // Calendar logic
@@ -262,18 +353,26 @@ const LeaveManagement = () => {
                       <td>{req.reason}</td>
                       <td>{getStatusBadge(req.status)}</td>
                       <td style={{ textAlign: 'center' }}>
-                        {req.status === 'pending' ? (
-                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                            <button className="btn btn-primary" style={{ padding: '6px', minWidth: '32px' }} title="Approve" onClick={() => setActionModal({ open: true, req, action: 'approved' })}>
-                              <Check size={16} />
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'nowrap' }}>
+                          {req.status === 'pending' && (
+                            <>
+                              <button className="btn btn-primary" style={{ padding: '5px 8px', minWidth: '32px' }} title="Approve" onClick={() => setActionModal({ open: true, req, action: 'approved' })}>
+                                <Check size={15} />
+                              </button>
+                              <button className="btn btn-danger" style={{ padding: '5px 8px', minWidth: '32px' }} title="Reject" onClick={() => setActionModal({ open: true, req, action: 'rejected' })}>
+                                <X size={15} />
+                              </button>
+                            </>
+                          )}
+                          {!isPastLeave(req.start_date) && (
+                            <button className="btn" style={{ padding: '5px 8px', minWidth: '32px', background: '#6366f1', color: '#fff' }} title="Edit" onClick={() => openEditModal(req)}>
+                              <Pencil size={15} />
                             </button>
-                            <button className="btn btn-danger" style={{ padding: '6px', minWidth: '32px' }} title="Reject" onClick={() => setActionModal({ open: true, req, action: 'rejected' })}>
-                              <X size={16} />
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>{req.admin_remarks || 'No remarks'}</span>
-                        )}
+                          )}
+                          <button className="btn btn-danger" style={{ padding: '5px 8px', minWidth: '32px', background: '#dc2626' }} title="Delete" onClick={() => setDeleteModal({ open: true, req })}>
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -345,7 +444,7 @@ const LeaveManagement = () => {
         </div>
       )}
 
-      {/* Action Modal (Approve/Reject) */}
+      {/* ── Approve / Reject Modal ─────────────────────────────────────────── */}
       {actionModal.open && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -363,6 +462,96 @@ const LeaveManagement = () => {
                 Confirm {actionModal.action}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Modal ────────────────────────────────────────────────────── */}
+      {editModal.open && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '800px', width: '100%' }}>
+            <div className="modal-header">
+              <h3>Edit Leave Request</h3>
+              <button className="close-btn" onClick={() => setEditModal({ open: false, req: null })}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Editing request for <strong>{editModal.req?.user_name}</strong>
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="input-group">
+                  <label>Leave Type</label>
+                  <select className="input-field" name="leave_type" value={editForm.leave_type} onChange={handleEditChange} required>
+                    {LEAVE_TYPES.map(lt => <option key={lt} value={lt}>{lt}</option>)}
+                  </select>
+                </div>
+                <div className="input-group">
+                  <label>Status</label>
+                  <select className="input-field" name="status" value={editForm.status} onChange={handleEditChange}>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+
+                <div className="input-group">
+                  <label>Start Date</label>
+                  <input className="input-field" type="date" name="start_date" value={editForm.start_date} onChange={handleEditChange} required />
+                </div>
+                <div className="input-group">
+                  <label>End Date</label>
+                  <input className="input-field" type="date" name="end_date" value={editForm.end_date} onChange={handleEditChange} required />
+                </div>
+
+                <div className="input-group">
+                  <label>Total Days</label>
+                  <input className="input-field" type="number" name="total_days" value={editForm.total_days} onChange={handleEditChange} min="1" required />
+                </div>
+                <div></div>
+
+                <div className="input-group">
+                  <label>Reason</label>
+                  <textarea className="input-field" name="reason" value={editForm.reason} onChange={handleEditChange} rows="4" required></textarea>
+                </div>
+                <div className="input-group">
+                  <label>Admin Remarks</label>
+                  <textarea className="input-field" name="admin_remarks" value={editForm.admin_remarks} onChange={handleEditChange} rows="4" placeholder="Optional remarks..."></textarea>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button type="button" className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setEditModal({ open: false, req: null })}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={loading} style={{ flex: 1, justifyContent: 'center', background: '#6366f1' }}>
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirmation Modal ─────────────────────────────────────── */}
+      {deleteModal.open && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '420px', width: '100%' }}>
+            <div className="modal-header">
+              <h3 style={{ color: '#dc2626' }}>Delete Leave Request</h3>
+              <button className="close-btn" onClick={() => setDeleteModal({ open: false, req: null })}><X size={20} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <p style={{ margin: 0 }}>
+                Are you sure you want to <strong style={{ color: '#dc2626' }}>permanently delete</strong> the{' '}
+                <strong>{deleteModal.req?.leave_type}</strong> request from{' '}
+                <strong>{deleteModal.req?.user_name}</strong>? This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setDeleteModal({ open: false, req: null })}>Cancel</button>
+                <button className="btn btn-danger" disabled={loading} style={{ flex: 1, justifyContent: 'center', background: '#dc2626' }} onClick={handleDeleteConfirm}>
+                  {loading ? 'Deleting...' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

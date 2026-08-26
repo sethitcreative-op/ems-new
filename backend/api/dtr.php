@@ -135,6 +135,15 @@ if ($action === 'clock_in') {
                       AND ev.status = 'approved'
                       AND ev.event_type IN ('VL', 'SL', 'PDO', 'Birthday', 'Meeting', 'Holiday', 'HL')
                 )
+                -- No pending reschedule request where this date is the ORIGINAL date being rescheduled
+                AND NOT EXISTS (
+                    SELECT 1 FROM events ev2
+                    JOIN events ev_orig ON ev2.reschedule_for_event_id = ev_orig.id
+                    WHERE ev2.user_id = :uid5
+                      AND ev2.status = 'pending'
+                      AND ev2.reschedule_for_event_id IS NOT NULL
+                      AND ev_orig.event_date = d.date_val
+                )
         ";
         $autoAbsentStmt = $conn->prepare($autoAbsentQuery);
         $autoAbsentStmt->execute([
@@ -142,6 +151,7 @@ if ($action === 'clock_in') {
             ':uid2'      => $uid,
             ':uid3'      => $uid,
             ':uid4'      => $uid,
+            ':uid5'      => $uid,
             ':start'     => $startDate,
             ':start2'    => $startDate,
             ':yesterday' => $yesterday

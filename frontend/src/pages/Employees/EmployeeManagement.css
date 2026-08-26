@@ -164,10 +164,10 @@
 }
 
 .role-badge.admin {
-  background: #8b5cf6;
+  background: #f59e0b;
   color: #ffffff;
   border: none;
-  box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
 }
 
 .role-badge.user {
@@ -637,6 +637,21 @@
 }
 [data-theme="light"] .mgmt-role-badge {
   background: #ffffff;
+}
+
+.mgmt-role-badge.admin {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+[data-theme="light"] .mgmt-role-badge.admin {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.team-role-badge.admin {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
 }
 
 .rate-cell {

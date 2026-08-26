@@ -12,6 +12,7 @@ export const NotificationProvider = ({ children }) => {
   const lastNotificationRef = useRef({ message: null, time: 0 });
   const initialLoadDone = useRef(false);
   const seenNotificationIds = useRef(new Set());
+  const isFetching = useRef(false);
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -103,9 +104,14 @@ export const NotificationProvider = ({ children }) => {
 
   useEffect(() => {
     const fetchNotifications = async () => {
+      // Prevent concurrent fetches that can cause a race condition where
+      // the second call sees initialLoadDone=true (set by the first) and
+      // toasts all pre-existing unread notifications as if they were new.
+      if (isFetching.current) return;
       const user = JSON.parse(localStorage.getItem('user'));
       if (!user) return;
 
+      isFetching.current = true;
       try {
         const res = await fetch(`${API_BASE}/notifications.php?user_id=${user.id}`);
         const data = await res.json();
@@ -133,7 +139,8 @@ export const NotificationProvider = ({ children }) => {
               }
             });
           } else {
-            // Initial load, just mark all as seen so we don't toast them later
+            // Initial load: mark all existing notifications as seen so we
+            // don't toast them the next time the poller runs.
             newNotifs.forEach(n => seenNotificationIds.current.add(String(n.id)));
             initialLoadDone.current = true;
           }
@@ -143,6 +150,8 @@ export const NotificationProvider = ({ children }) => {
         }
       } catch (error) {
         console.error("Failed to fetch notifications", error);
+      } finally {
+        isFetching.current = false;
       }
     };
 
@@ -152,11 +161,17 @@ export const NotificationProvider = ({ children }) => {
     // Custom event to stop interval on logout or trigger refresh
     const handleAuthChange = () => {
       if (!localStorage.getItem('user')) {
+        // User logged out — reset everything
         setNotifications([]);
         setUnreadCount(0);
         initialLoadDone.current = false;
         seenNotificationIds.current.clear();
+        isFetching.current = false;
       } else {
+        // User just logged in — treat next fetch as the initial load so we
+        // don't re-toast all pre-existing unread notifications.
+        initialLoadDone.current = false;
+        seenNotificationIds.current.clear();
         fetchNotifications();
       }
     };
