@@ -45,7 +45,7 @@ if ($method === 'GET') {
         $period = new DatePeriod($start, $interval, $end);
         
         $leaveTypeAbbr = '';
-        if ($leave['leave_type'] === 'Vacation Leave') $leaveTypeAbbr = 'VL';
+        if ($leave['leave_type'] === 'Leave') $leaveTypeAbbr = 'VL';
         elseif ($leave['leave_type'] === 'Sick Leave') $leaveTypeAbbr = 'SL';
         elseif ($leave['leave_type'] === 'Paid Day Off') $leaveTypeAbbr = 'PDO';
         else $leaveTypeAbbr = $leave['leave_type'];
@@ -128,9 +128,9 @@ elseif ($method === 'POST') {
             exit;
         }
 
-        $reason = trim($description) === '' ? 'Vacation Leave via Calendar' : $description;
+        $reason = trim($description) === '' ? 'Leave via Calendar' : $description;
 
-        $query = "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Vacation Leave', :start_date, :end_date, 1, :reason, :status)";
+        $query = "INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Leave', :start_date, :end_date, 1, :reason, :status)";
         $stmt = $conn->prepare($query);
         try {
             $stmt->execute([
@@ -142,15 +142,15 @@ elseif ($method === 'POST') {
             ]);
 
             if ($is_admin_assigning) {
-                logAction($conn, $user_id, 'ASSIGN_LEAVE', "Administrator assigned a Vacation Leave for {$event_date}.");
-                $notif_message = "Admin has assigned a Vacation Leave for " . date('M d, Y', strtotime($event_date)) . ".";
+                logAction($conn, $user_id, 'ASSIGN_LEAVE', "Administrator assigned a Leave for {$event_date}.");
+                $notif_message = "Admin has assigned a Leave for " . date('M d, Y', strtotime($event_date)) . ".";
                 $notif_stmt = $conn->prepare("INSERT INTO notifications (user_id, type, message) VALUES (:user_id, 'info', :message)");
                 $notif_stmt->execute([
                     ':user_id' => $user_id,
                     ':message' => $notif_message
                 ]);
             } else {
-                logAction($conn, $user_id, 'SUBMIT_LEAVE', "Employee submitted a Vacation Leave for {$event_date} via Calendar.");
+                logAction($conn, $user_id, 'SUBMIT_LEAVE', "Employee submitted a Leave for {$event_date} via Calendar.");
             }
 
             echo json_encode(["status" => "success", "message" => "Leave request created successfully"]);
@@ -315,8 +315,8 @@ elseif ($method === 'PUT') {
             $del->execute([':id' => $event_id]);
             
             // 2. Insert into leave_requests
-            $reason = trim($description) === '' ? 'Vacation Leave via Calendar' : $description;
-            $ins = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Vacation Leave', :start_date, :end_date, 1, :reason, :status)");
+            $reason = trim($description) === '' ? 'Leave via Calendar' : $description;
+            $ins = $conn->prepare("INSERT INTO leave_requests (user_id, leave_type, start_date, end_date, total_days, reason, status) VALUES (:user_id, 'Leave', :start_date, :end_date, 1, :reason, :status)");
             $ins->execute([
                 ':user_id' => $user_id,
                 ':start_date' => $event_date,
@@ -324,7 +324,7 @@ elseif ($method === 'PUT') {
                 ':reason' => $reason,
                 ':status' => $status ?? 'pending'
             ]);
-            echo json_encode(["status" => "success", "message" => "Converted to Vacation Leave successfully"]);
+            echo json_encode(["status" => "success", "message" => "Converted to Leave successfully"]);
             exit;
         }
 

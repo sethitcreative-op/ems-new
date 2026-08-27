@@ -127,14 +127,14 @@ const LeaveTracker = () => {
 
       <div className="glass table-container" style={{ marginBottom: '30px', background: '#fff' }}>
         <div className="table-responsive" style={{ overflowX: 'auto' }}>
-          <table className="premium-table" style={{ minWidth: '1200px', fontSize: '0.85rem' }}>
+          <table className="premium-table" style={{ minWidth: '1200px', fontSize: '0.85rem', borderCollapse: 'collapse', border: '2px solid #000' }}>
             <thead>
               <tr>
-                <th style={{ position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1 }}>Month</th>
+                <th style={{ position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1, border: '1px solid #000' }}>Month</th>
                 {Array.from({ length: 31 }, (_, i) => (
-                  <th key={i + 1} style={{ textAlign: 'center', padding: '6px' }}>{i + 1}</th>
+                  <th key={i + 1} style={{ textAlign: 'center', padding: '6px', border: '1px solid #000' }}>{i + 1}</th>
                 ))}
-                <th style={{ textAlign: 'center', background: '#f8fafc' }}>Total</th>
+                <th style={{ textAlign: 'center', background: '#f8fafc', border: '1px solid #000' }}>Total</th>
               </tr>
             </thead>
             <tbody>
@@ -143,12 +143,12 @@ const LeaveTracker = () => {
                 let totalLeaves = 0;
                 return (
                   <tr key={monthName}>
-                    <td style={{ position: 'sticky', left: 0, background: '#fff', fontWeight: 'bold', zIndex: 1, borderRight: '1px solid var(--border-color)' }}>
+                    <td style={{ position: 'sticky', left: 0, background: '#fff', fontWeight: 'bold', zIndex: 1, border: '1px solid #000' }}>
                       {monthName}
                     </td>
                     {Array.from({ length: 31 }, (_, dIndex) => {
                       const day = dIndex + 1;
-                      if (day > dInM) return <td key={day} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0' }}></td>;
+                      if (day > dInM) return <td key={day} style={{ background: '#f1f5f9', border: '1px solid #000' }}></td>;
 
                       const isLeave = isLeaveDay(mIndex, day);
                       if (isLeave) totalLeaves++;
@@ -159,13 +159,13 @@ const LeaveTracker = () => {
                           padding: '6px',
                           background: isLeave ? '#10b981' : '#fff',
                           color: isLeave ? '#fff' : 'inherit',
-                          border: '1px solid #e2e8f0'
+                          border: '1px solid #000'
                         }}>
                           {isLeave ? '✓' : ''}
                         </td>
                       );
                     })}
-                    <td style={{ textAlign: 'center', fontWeight: 'bold', background: '#f8fafc', borderLeft: '1px solid var(--border-color)' }}>{totalLeaves}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 'bold', background: '#f8fafc', border: '1px solid #000' }}>{totalLeaves}</td>
                   </tr>
                 );
               })}
@@ -189,7 +189,6 @@ const LeaveTracker = () => {
                 <th>Days</th>
                 <th>Reason</th>
                 <th>Status</th>
-                <th>Admin Remarks</th>
               </tr>
             </thead>
             <tbody>
@@ -202,12 +201,11 @@ const LeaveTracker = () => {
                     <td>{req.total_days}</td>
                     <td>{req.reason}</td>
                     <td>{getStatusBadge(req.status)}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{req.admin_remarks || '-'}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
                     No leave requests found.
                   </td>
                 </tr>

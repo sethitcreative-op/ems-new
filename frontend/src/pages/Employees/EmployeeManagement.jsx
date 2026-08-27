@@ -144,6 +144,7 @@ const EmployeeManagement = () => {
   });
   const [profilePictureFile, setProfilePictureFile] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+  const [govIdFile, setGovIdFile] = useState(null);
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
@@ -202,6 +203,10 @@ const EmployeeManagement = () => {
         data.append('profile_picture', profilePictureFile);
       }
 
+      if (govIdFile) {
+        data.append('gov_id_file', govIdFile);
+      }
+
       if (editingId) {
         data.append('id', editingId);
         data.append('_method', 'PUT');
@@ -230,6 +235,7 @@ const EmployeeManagement = () => {
         setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone_code: '+1', phone_number: '', address: '', id_number: '', sex: '' });
         setProfilePictureFile(null);
         setPreviewImage(null);
+        setGovIdFile(null);
         setEditingId(null);
         setIsModalOpen(false);
         fetchEmployees();
@@ -286,8 +292,9 @@ const EmployeeManagement = () => {
       setFormData({ username: '', password: '', full_name: '', hourly_rate: '', role: 'user', email: '', phone_code: '+1', phone_number: '', address: '', id_number: '', sex: '' });
       setEditingId(null);
     }
-    setProfilePictureFile(null);
     setPreviewImage(null);
+    setProfilePictureFile(null);
+    setGovIdFile(null);
     setActiveModalTab('profile');
     setIsModalOpen(true);
   };
@@ -495,11 +502,10 @@ const EmployeeManagement = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
-                  { id: 'profile', label: 'Profile Details' },
-                  { id: 'compensation', label: formData.role === 'admin' ? 'Contact' : 'Compensation' },
+                  { id: 'profile', label: formData.role === 'admin' ? 'Profile Details' : 'Personal Details' },
                   ...(formData.role === 'admin' ? [] : [
-                    { id: 'government', label: 'Government ID' },
-                    { id: 'schedule', label: 'Schedule' }
+                    { id: 'rate', label: 'Rate' },
+                    { id: 'government', label: 'Government ID' }
                   ])
                 ].map(tab => (
                   <button
@@ -535,7 +541,9 @@ const EmployeeManagement = () => {
               <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px', display: 'flex', flexDirection: 'column' }}>
                 {activeModalTab === 'profile' && (
                   <div className="form-section animate-panel">
-                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Profile Details</h4>
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>
+                      {formData.role === 'admin' ? 'Profile Details' : 'Personal Details'}
+                    </h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                       <div className="modal-field">
                         <label>Full Name</label>
@@ -559,13 +567,42 @@ const EmployeeManagement = () => {
                         <select className="input-field" value={formData.role} onChange={e => {
                           const newRole = e.target.value;
                           setFormData({ ...formData, role: newRole });
-                          if (newRole === 'admin' && (activeModalTab === 'government' || activeModalTab === 'schedule')) {
+                          if (newRole === 'admin' && activeModalTab !== 'profile') {
                             setActiveModalTab('profile');
                           }
                         }}>
                           <option value="user">User</option>
                           <option value="admin">Admin</option>
                         </select>
+                      </div>
+                      <div className="modal-field">
+                        <label>Email Address</label>
+                        <input type="email" className="input-field" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                      </div>
+                      <div className="modal-field">
+                        <label>Phone Number</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select 
+                            className="input-field" 
+                            style={{ width: '100px', flexShrink: 0, padding: '10px 8px' }}
+                            value={formData.phone_code} 
+                            onChange={e => setFormData({ ...formData, phone_code: e.target.value })}
+                          >
+                            <option value="+1">US (+1)</option>
+                            <option value="+63">PH (+63)</option>
+                          </select>
+                          <input 
+                            type="text" 
+                            className="input-field" 
+                            placeholder="000-000-0000"
+                            value={formData.phone_number} 
+                            onChange={handlePhoneChange} 
+                          />
+                        </div>
+                      </div>
+                      <div className="modal-field" style={{ gridColumn: '1 / -1' }}>
+                        <label>Address</label>
+                        <input type="text" className="input-field" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
                       </div>
                     </div>
                     <div className="modal-field" style={{ marginTop: '16px' }}>
@@ -601,64 +638,26 @@ const EmployeeManagement = () => {
                   </div>
                 )}
 
-                {activeModalTab === 'compensation' && (
+                {activeModalTab === 'rate' && formData.role !== 'admin' && (
                   <div className="form-section animate-panel">
-                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>{formData.role === 'admin' ? 'Contact Details' : 'Compensation & Contact'}</h4>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                      <div className="modal-field">
-                        <label>Email Address</label>
-                        <input type="email" className="input-field" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
-                      </div>
-                      <div className="modal-field">
-                        <label>Phone Number</label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <select 
-                            className="input-field" 
-                            style={{ width: '100px', flexShrink: 0, padding: '10px 8px' }}
-                            value={formData.phone_code} 
-                            onChange={e => setFormData({ ...formData, phone_code: e.target.value })}
-                          >
-                            <option value="+1">US (+1)</option>
-                            <option value="+63">PH (+63)</option>
-                          </select>
-                          <input 
-                            type="text" 
-                            className="input-field" 
-                            placeholder="000-000-0000"
-                            value={formData.phone_number} 
-                            onChange={handlePhoneChange} 
-                          />
-                        </div>
-                      </div>
-                      <div className="modal-field" style={{ gridColumn: '1 / -1' }}>
-                        <label>Address</label>
-                        <input type="text" className="input-field" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
-                      </div>
-                      {formData.role !== 'admin' && (
-                        <div className="modal-field">
-                          <label>Hourly Rate ($)</label>
-                          <input type="number" step="0.01" className="input-field" required value={formData.hourly_rate} onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })} />
-                        </div>
-                      )}
+                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Rate</h4>
+                    <div className="modal-field">
+                      <label>Hourly Rate ($)</label>
+                      <input type="number" step="0.01" className="input-field" required value={formData.hourly_rate} onChange={e => setFormData({ ...formData, hourly_rate: e.target.value })} />
                     </div>
                   </div>
                 )}
 
-                {activeModalTab === 'government' && (
+                {activeModalTab === 'government' && formData.role !== 'admin' && (
                   <div className="form-section animate-panel">
                     <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Government ID</h4>
                     <div className="modal-field">
                       <label>Government ID Number</label>
                       <input type="text" className="input-field" value={formData.id_number} onChange={e => setFormData({ ...formData, id_number: e.target.value })} />
                     </div>
-                  </div>
-                )}
-
-                {activeModalTab === 'schedule' && (
-                  <div className="form-section animate-panel">
-                    <h4 style={{ marginTop: 0, marginBottom: '20px', color: 'var(--text-main)' }}>Schedule</h4>
-                    <div className="modal-field">
-                      <p className="field-hint" style={{ margin: 0 }}>User schedules are managed via the Calendar module.</p>
+                    <div className="modal-field" style={{ marginTop: '16px' }}>
+                      <label>Upload Government ID</label>
+                      <input type="file" className="input-field" onChange={e => setGovIdFile(e.target.files[0])} />
                     </div>
                   </div>
                 )}

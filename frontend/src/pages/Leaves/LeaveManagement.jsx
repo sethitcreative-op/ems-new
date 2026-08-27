@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { useNotification } from '../../context/NotificationContext';
-import { Check, X, Calendar as CalendarIcon, List, Pencil, Trash2 } from 'lucide-react';
+import { Check, X, Calendar as CalendarIcon, List, Pencil, Trash2, Users } from 'lucide-react';
 import API_BASE from '../../config/api';
 
-const LEAVE_TYPES = ['Vacation Leave', 'Sick Leave', 'Emergency Leave', 'Maternity Leave', 'Paternity Leave', 'Other'];
+const LEAVE_TYPES = ['Leave', 'Sick Leave', 'Emergency Leave', 'Maternity Leave', 'Paternity Leave', 'Other'];
 
 const LeaveManagement = () => {
   const [requests, setRequests] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [employeeFilter, setEmployeeFilter] = useState('');
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+  const [viewMode, setViewMode] = useState('list'); // 'list', 'calendar', or 'summary'
   const [year, setYear] = useState(new Date().getFullYear());
   
   const [actionModal, setActionModal] = useState({ open: false, req: null, action: '' });
@@ -266,6 +268,62 @@ const LeaveManagement = () => {
     a.click();
   };
 
+  const exportSummaryPDF = () => {
+    const doc = new jsPDF({ orientation: 'portrait' });
+    
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Approved Leave Summary (${year})`, 14, 20);
+
+    const summaryData = {};
+    filteredRequests.forEach(req => {
+      if (req.status !== 'approved') return;
+      if (req.leave_type !== 'Leave') return;
+      if (!req.start_date || !req.start_date.startsWith(year.toString())) return;
+
+      const uid = req.user_id;
+      if (!summaryData[uid]) {
+        summaryData[uid] = {
+          user_name: req.user_name,
+          total_days: 0,
+          records: []
+        };
+      }
+      const days = parseInt(req.total_days || 0, 10);
+      summaryData[uid].total_days += days;
+      summaryData[uid].records.push(req);
+    });
+
+    const rows = Object.values(summaryData).sort((a, b) => b.total_days - a.total_days);
+
+    const tableColumn = ["EMPLOYEE", "DATE SUBMITTED", "REASON", "TOTAL DAYS"];
+    const tableRows = [];
+
+    rows.forEach(row => {
+      const datesList = row.records.map(r => r.created_at ? new Date(r.created_at).toLocaleDateString() : new Date(r.start_date).toLocaleDateString()).join('\n');
+      const reasonsList = row.records.map(r => `${r.reason} (${r.total_days} day${r.total_days > 1 ? 's' : ''})`).join('\n');
+      
+      tableRows.push([
+        row.user_name,
+        datesList,
+        reasonsList,
+        row.total_days.toString()
+      ]);
+    });
+
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: 30,
+      theme: 'grid',
+      headStyles: { fillColor: [248, 250, 252], textColor: [0, 0, 0], fontStyle: 'bold', lineWidth: 0.5, lineColor: [0, 0, 0] },
+      bodyStyles: { textColor: [0, 0, 0], lineWidth: 0.5, lineColor: [0, 0, 0] },
+      styles: { font: 'helvetica', fontSize: 10, cellPadding: 4, lineWidth: 0.5, lineColor: [0, 0, 0] }
+    });
+
+    doc.save(`Leave_Summary_${year}.pdf`);
+  };
+
   return (
     <div className="page-container">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -299,13 +357,30 @@ const LeaveManagement = () => {
             >
               <CalendarIcon size={18} /> Calendar
             </button>
+            <button 
+              style={{ 
+                display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px', border: 'none',
+                background: viewMode === 'summary' ? 'var(--primary)' : 'transparent', 
+                color: viewMode === 'summary' ? '#fff' : 'var(--text-primary)', 
+                cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap',
+                transition: 'all 0.2s', flexShrink: 0
+              }}
+              onClick={() => setViewMode('summary')}
+            >
+              <Users size={18} /> Summary
+            </button>
           </div>
-          {viewMode === 'calendar' && (
-            <select className="input-field" style={{ width: '120px', minWidth: '120px' }} value={year} onChange={e => setYear(parseInt(e.target.value))}>
+          {(viewMode === 'calendar' || viewMode === 'summary') && (
+            <select className="input-field" style={{ width: '120px', minWidth: '120px', margin: 0 }} value={year} onChange={e => setYear(parseInt(e.target.value))}>
               {[year - 2, year - 1, year, year + 1, year + 2].map(y => (
                 <option key={y} value={y}>{y}</option>
               ))}
             </select>
+          )}
+          {viewMode === 'summary' && (
+            <button className="btn btn-primary" style={{ background: '#3b82f6', color: 'white' }} onClick={exportSummaryPDF}>
+              Export PDF
+            </button>
           )}
           <button className="btn" style={{ background: '#10b981', color: 'white' }} onClick={exportCSV}>
             Export CSV
@@ -387,17 +462,17 @@ const LeaveManagement = () => {
             </table>
           </div>
         </div>
-      ) : (
+      ) : viewMode === 'calendar' ? (
         <div className="glass table-container" style={{ background: '#fff' }}>
           <div className="table-responsive" style={{ overflowX: 'auto' }}>
-            <table className="premium-table" style={{ minWidth: '1200px', fontSize: '0.85rem' }}>
+            <table className="premium-table" style={{ minWidth: '1200px', fontSize: '0.85rem', borderCollapse: 'collapse', border: '2px solid #000' }}>
               <thead>
                 <tr>
-                  <th style={{ position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1 }}>Month</th>
+                  <th style={{ position: 'sticky', left: 0, background: '#f8fafc', zIndex: 1, border: '1px solid #000' }}>Month</th>
                   {Array.from({ length: 31 }, (_, i) => (
-                    <th key={i + 1} style={{ textAlign: 'center', padding: '6px' }}>{i + 1}</th>
+                    <th key={i + 1} style={{ textAlign: 'center', padding: '6px', border: '1px solid #000' }}>{i + 1}</th>
                   ))}
-                  <th style={{ textAlign: 'center', background: '#f8fafc' }}>Total</th>
+                  <th style={{ textAlign: 'center', background: '#f8fafc', border: '1px solid #000' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -406,12 +481,12 @@ const LeaveManagement = () => {
                   let totalLeaves = 0;
                   return (
                     <tr key={monthName}>
-                      <td style={{ position: 'sticky', left: 0, background: '#fff', fontWeight: 'bold', zIndex: 1, borderRight: '1px solid var(--border-color)' }}>
+                      <td style={{ position: 'sticky', left: 0, background: '#fff', fontWeight: 'bold', zIndex: 1, border: '1px solid #000' }}>
                         {monthName}
                       </td>
                       {Array.from({ length: 31 }, (_, dIndex) => {
                         const day = dIndex + 1;
-                        if (day > dInM) return <td key={day} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0' }}></td>;
+                        if (day > dInM) return <td key={day} style={{ background: '#f1f5f9', border: '1px solid #000' }}></td>;
                         
                         const leaves = getLeavesForDay(mIndex, day);
                         const count = leaves.length;
@@ -422,11 +497,11 @@ const LeaveManagement = () => {
                             textAlign: 'center', 
                             padding: '6px',
                             background: '#fff',
-                            color: count > 0 ? '#10b981' : 'inherit',
-                            fontWeight: count > 0 ? 700 : 400,
-                            border: '1px solid #e2e8f0',
+                            color: count > 0 ? '#000' : 'inherit',
+                            fontWeight: count > 0 ? 800 : 400,
+                            border: '1px solid #000',
                             cursor: count > 0 ? 'help' : 'default',
-                            fontSize: '0.85rem'
+                            fontSize: '1rem'
                           }}
                           title={count > 0 ? leaves.map(l => l.user_name).join(', ') : ''}
                           >
@@ -434,7 +509,7 @@ const LeaveManagement = () => {
                           </td>
                         );
                       })}
-                      <td style={{ textAlign: 'center', fontWeight: 'bold', background: '#f8fafc', borderLeft: '1px solid var(--border-color)' }}>{totalLeaves}</td>
+                      <td style={{ textAlign: 'center', fontWeight: 'bold', background: '#f8fafc', border: '1px solid #000' }}>{totalLeaves}</td>
                     </tr>
                   );
                 })}
@@ -442,6 +517,85 @@ const LeaveManagement = () => {
             </table>
           </div>
         </div>
+      ) : (
+        (() => {
+          const summaryData = {};
+          filteredRequests.forEach(req => {
+            if (req.status !== 'approved') return;
+            if (req.leave_type !== 'Leave') return;
+            
+            // Year filter based on start_date
+            if (!req.start_date || !req.start_date.startsWith(year.toString())) return;
+
+            const uid = req.user_id;
+            if (!summaryData[uid]) {
+              summaryData[uid] = {
+                user_name: req.user_name,
+                total_days: 0,
+                records: []
+              };
+            }
+            const days = parseInt(req.total_days || 0, 10);
+            summaryData[uid].total_days += days;
+            summaryData[uid].records.push(req);
+          });
+
+          const rows = Object.values(summaryData).sort((a, b) => b.total_days - a.total_days);
+
+          return (
+            <div className="glass table-container" style={{ background: '#fff', padding: '20px' }}>
+              <h3 style={{ marginBottom: '16px' }}>Approved Leave Summary ({year})</h3>
+              <div className="table-responsive">
+                <table className="premium-table" style={{ borderCollapse: 'collapse', border: '2px solid #000' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ border: '1px solid #000', background: '#f8fafc', width: '25%' }}>Employee</th>
+                      <th style={{ border: '1px solid #000', background: '#f8fafc', width: '25%' }}>Date Submitted</th>
+                      <th style={{ border: '1px solid #000', background: '#f8fafc', width: '35%' }}>Reason</th>
+                      <th style={{ textAlign: 'center', border: '1px solid #000', background: '#e2e8f0', fontWeight: 'bold', width: '15%' }}>Total Days</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length > 0 ? (
+                      rows.map(row => (
+                        <tr key={row.user_name}>
+                          <td style={{ border: '1px solid #000', fontWeight: 'bold', verticalAlign: 'top' }}>{row.user_name}</td>
+                          <td style={{ border: '1px solid #000', verticalAlign: 'top' }}>
+                            <ul style={{ margin: 0, paddingLeft: '16px' }}>
+                              {row.records.map((r, i) => (
+                                <li key={i} style={{ marginBottom: '4px' }}>
+                                  {r.created_at ? new Date(r.created_at).toLocaleDateString() : new Date(r.start_date).toLocaleDateString()}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                          <td style={{ border: '1px solid #000', verticalAlign: 'top' }}>
+                            <ul style={{ margin: 0, paddingLeft: '16px' }}>
+                              {row.records.map((r, i) => (
+                                <li key={i} style={{ marginBottom: '4px' }}>
+                                  {r.reason} ({r.total_days} day{r.total_days > 1 ? 's' : ''})
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                          <td style={{ textAlign: 'center', border: '1px solid #000', fontWeight: 'bold', background: '#f8fafc', verticalAlign: 'top' }}>
+                            {row.total_days}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', padding: '30px', border: '1px solid #000' }}>
+                          No approved leaves found for {year}.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })()
       )}
 
       {/* ── Approve / Reject Modal ─────────────────────────────────────────── */}

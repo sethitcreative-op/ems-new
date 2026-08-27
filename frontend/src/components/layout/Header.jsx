@@ -64,6 +64,7 @@ const Header = () => {
     document.body.classList.add('fade-out-exit');
     setTimeout(() => {
       localStorage.removeItem('token');
+      localStorage.removeItem('tokenExpiry');
       localStorage.removeItem('user');
       document.body.classList.remove('fade-out-exit');
       window.location.href = '/login';

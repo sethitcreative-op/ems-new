@@ -61,7 +61,7 @@ if ($method === 'GET') {
         
         if (count($balances) === 0 && $user_id != 0) {
             // Initialize default balances (e.g., 0 for now)
-            $initStmt = $conn->prepare("INSERT INTO leave_balances (user_id, leave_type, total_days, used_days, year) VALUES (:user_id, 'Vacation Leave', 0, 0, :year)");
+            $initStmt = $conn->prepare("INSERT INTO leave_balances (user_id, leave_type, total_days, used_days, year) VALUES (:user_id, 'Leave', 0, 0, :year)");
             $initStmt->execute([':user_id' => $user_id, ':year' => $currentYear]);
             
             $checkStmt->execute([':user_id' => $user_id, ':year' => $currentYear]);

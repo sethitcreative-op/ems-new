@@ -467,7 +467,7 @@
 }
 
 .dtr-table-section {
-  border: 1px solid #e2e8f0;
+  border: 2px solid #000;
   border-radius: 8px;
   overflow: hidden;
 }
@@ -479,7 +479,7 @@
   font-weight: 800;
   font-size: 0.9rem;
   padding: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 2px solid #000;
   letter-spacing: 1px;
 }
 
@@ -491,7 +491,7 @@
 
 .dtr-monthly-table th,
 .dtr-monthly-table td {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #000;
   text-align: center;
   padding: 2px 4px;
   font-size: 0.7rem;

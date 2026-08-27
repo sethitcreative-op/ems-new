@@ -15,7 +15,20 @@ import LeaveManagement from './pages/Leaves/LeaveManagement';
 import { NotificationProvider } from './context/NotificationContext';
 
 const ProtectedRoute = ({ children }) => {
-  const isAuthenticated = !!localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  const tokenExpiry = localStorage.getItem('tokenExpiry');
+  const now = new Date().getTime();
+
+  let isAuthenticated = false;
+  if (token && tokenExpiry && now < parseInt(tokenExpiry, 10)) {
+    isAuthenticated = true;
+  } else if (token) {
+    // Token exists but is expired or missing expiry
+    localStorage.removeItem('token');
+    localStorage.removeItem('tokenExpiry');
+    localStorage.removeItem('user');
+  }
+
   return isAuthenticated ? children : <Navigate to="/login" />;
 };
 

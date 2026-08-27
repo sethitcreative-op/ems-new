@@ -261,7 +261,7 @@ const CalendarPage = () => {
   const handleAddEvent = async (e) => {
     e.preventDefault();
 
-    const computedTitle = eventType === 'WS' ? 'Work Schedule' : eventType === 'VL' ? 'Vacation Leave' : eventType;
+    const computedTitle = eventType === 'WS' ? 'Work Schedule' : eventType === 'VL' ? 'Leave' : eventType;
     const todayStr = new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0];
 
     if (adminDateMode === 'single' || editingEventId) {
@@ -410,8 +410,8 @@ const CalendarPage = () => {
       try {
         await axios.post(`${API_BASE}/calendar.php`, {
           user_id: user.id,
-          title: scheduleType === 'WS' ? 'Work Shift' : 'Vacation Leave',
-          description: description || (scheduleType === 'WS' ? 'Requested working schedule' : 'Requested vacation leave'),
+          title: scheduleType === 'WS' ? 'Work Shift' : 'Leave',
+          description: description || (scheduleType === 'WS' ? 'Requested working schedule' : 'Requested leave'),
           event_date: dateStr,
           event_type: scheduleType,
           schedule_option: scheduleOption,
@@ -834,19 +834,19 @@ const CalendarPage = () => {
                   doc.setFontSize(22);
                   doc.setFont('helvetica', 'bold');
                   doc.setTextColor(30, 41, 59);
-                  doc.text('Payroll Report', 148.5, 20, { align: 'center' });
+                  doc.text('Warehouse Schedule', 148.5, 20, { align: 'center' });
                   doc.setFontSize(11);
                   doc.setFont('helvetica', 'bold');
                   doc.setTextColor(100, 116, 139);
                   const startDate = weekCells[0].date;
                   const endDate = weekCells[6].date;
-                  const fmtDate = (d) => `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}-${d.getFullYear()}`;
+                  const fmtDate = (d) => `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
                   doc.text(`Cycle: ${fmtDate(startDate)} to ${fmtDate(endDate)}`, 148.5, 28, { align: 'center' });
                   const dates = weekCells.map(c => getLocalDateStr(c.date));
                   const dateHeaders = ['EMPLOYEE'];
                   weekCells.forEach(c => {
                     const shortDay = c.date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-                    const mmdd = `${c.date.getMonth()+1}/${c.date.getDate()}`;
+                    const mmdd = `${c.date.getMonth() + 1}/${c.date.getDate()}`;
                     dateHeaders.push(`${mmdd}\n${shortDay}`);
                   });
                   const tableRows = employees.map(emp => {
@@ -859,10 +859,10 @@ const CalendarPage = () => {
                     body: tableRows,
                     startY: 40,
                     theme: 'grid',
-                    headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0,0,0] },
-                    bodyStyles: { textColor: [51,65,85], halign: 'center', lineWidth: 0.5, lineColor: [0,0,0] },
+                    headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+                    bodyStyles: { textColor: [51, 65, 85], halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
                     styles: { font: 'helvetica', fontSize: 10, cellPadding: 4, minCellHeight: 16 },
-                    didParseCell: function(data) {
+                    didParseCell: function (data) {
                       if (data.section === 'body' && data.column.index > 0) {
                         const empName = data.row.raw[0];
                         const colIndex = data.column.index;
@@ -898,16 +898,16 @@ const CalendarPage = () => {
                               cellColor = [147, 196, 125];
                             }
                           }
-                          
+
                           const isGlobalHoliday = holidays.some(h => h.holiday_date === ds);
                           if (isGlobalHoliday || (evt && (evt.event_type === 'Holiday' || evt.event_type === 'HL'))) {
                             data.cell.styles.fillColor = [239, 100, 100]; // red for holiday
                             data.cell.text = [''];
                             return;
                           }
-                          
+
                           if (evt && (evt.event_type === 'VL' || evt.event_type === 'SL' || evt.event_type === 'PDO')) {
-                            data.cell.styles.fillColor = [135, 206, 235]; // sky blue for vacation leave
+                            data.cell.styles.fillColor = [135, 206, 235]; // sky blue for leave
                             data.cell.text = [''];
                             return;
                           }
@@ -924,7 +924,7 @@ const CalendarPage = () => {
                   // Legend: Regular Work Schedule (green)
                   doc.setFillColor(147, 196, 125);
                   doc.rect(14, finalY + 10, 5, 5, 'F');
-                  doc.text('* Regular Work Schedule', 22, finalY + 14);
+                  doc.text('* Work Schedule', 22, finalY + 14);
                   // Legend: Alternate Sat/Sun (yellow)
                   doc.setFillColor(255, 235, 59);
                   doc.rect(14, finalY + 18, 5, 5, 'F');
@@ -933,10 +933,10 @@ const CalendarPage = () => {
                   doc.setFillColor(180, 180, 180);
                   doc.rect(14, finalY + 26, 5, 5, 'F');
                   doc.text('* Available at warehouse when needed', 22, finalY + 30);
-                  // Legend: Vacation (sky blue)
+                  // Legend: Leave (sky blue)
                   doc.setFillColor(135, 206, 235);
                   doc.rect(14, finalY + 34, 5, 5, 'F');
-                  doc.text('* Vacation', 22, finalY + 38);
+                  doc.text('* Leave', 22, finalY + 38);
                   // Legend: Holiday (red)
                   doc.setFillColor(239, 100, 100);
                   doc.rect(14, finalY + 42, 5, 5, 'F');
@@ -1142,7 +1142,7 @@ const CalendarPage = () => {
                       </td>
                       {weekCells.map((cell, idx) => {
                         const cellDateStr = `${cell.date.getFullYear()}-${String(cell.date.getMonth() + 1).padStart(2, '0')}-${String(cell.date.getDate()).padStart(2, '0')}`;
-                        
+
                         const dayHolidays = holidays
                           .filter(h => h.holiday_date === cellDateStr)
                           .map(h => ({
@@ -1153,13 +1153,13 @@ const CalendarPage = () => {
                             status: 'approved',
                             user_name: 'US Holiday'
                           }));
-                          
+
                         const dayEvents = events.filter(e => {
                           if (!e.event_date) return false;
                           const dateMatch = e.event_date.split(' ')[0] === cellDateStr;
                           return dateMatch && String(e.user_id) === String(emp.id);
                         });
-                        
+
                         const combinedEvents = [...dayHolidays, ...dayEvents];
                         const isToday = new Date().toDateString() === cell.date.toDateString();
                         return (
@@ -1482,7 +1482,7 @@ const CalendarPage = () => {
                         <button type="button" className="mini-cal-nav-btn" onClick={() => setAdminMiniCalMonth(new Date(adminMiniYear, adminMiniMonthIdx + 1, 1))}>›</button>
                       </div>
                       <div className="mini-cal-grid" style={{ gap: '2px' }}>
-                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
                           <div key={d} className="mini-cal-dow" style={{ fontSize: '0.65rem', padding: '2px 0' }}>{d}</div>
                         ))}
                         {adminMiniCells.map((cell, idx) => {
@@ -1553,7 +1553,7 @@ const CalendarPage = () => {
                         <label style={labelStyle}>Category</label>
                         <select value={eventType} onChange={e => setEventType(e.target.value)} style={selStyle}>
                           <option value="WS">Work Schedule</option>
-                          <option value="VL">Vacation Leave</option>
+                          <option value="VL">Leave</option>
                         </select>
                       </div>
                     </div>
@@ -1818,7 +1818,7 @@ const CalendarPage = () => {
                         </button>
                       </div>
                       <div className="mini-cal-grid" style={{ gap: '2px' }}>
-                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
                           <div key={d} className="mini-cal-dow" style={{ fontSize: '0.65rem', padding: '2px 0' }}>{d}</div>
                         ))}
                         {miniCells.map((cell, idx) => {
@@ -1859,7 +1859,7 @@ const CalendarPage = () => {
 
                   {/* RIGHT COLUMN — Form Fields */}
                   <div style={{ flex: 1, padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    
+
                     {/* Date Mode Toggle */}
                     <div className="date-mode-toggle">
                       <button
@@ -1887,7 +1887,7 @@ const CalendarPage = () => {
                         style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%' }}
                       >
                         <option value="WS">Work Shift</option>
-                        <option value="VL">Vacation Leave</option>
+                        <option value="VL">Leave</option>
                       </select>
                     </div>
 
@@ -2046,7 +2046,7 @@ const CalendarPage = () => {
             </div>
             <form onSubmit={handleRescheduleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: rescheduleMode === 'cancel' ? '1fr' : '1fr 1fr', gap: '20px', padding: '16px' }}>
-                
+
                 {/* Left Column (Only for Reschedule) */}
                 {rescheduleMode === 'reschedule' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -2059,7 +2059,7 @@ const CalendarPage = () => {
                         <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px', display: 'block' }}>Type</label>
                         <select value={rescheduleType} onChange={e => setRescheduleType(e.target.value)} style={{ padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--glass-border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontSize: '0.875rem', width: '100%', boxSizing: 'border-box' }}>
                           <option value="WS">Work Shift (WS)</option>
-                          <option value="VL">Vacation Leave (VL)</option>
+                          <option value="VL">Leave (VL)</option>
                         </select>
                       </div>
                       <div>
@@ -2100,7 +2100,7 @@ const CalendarPage = () => {
                   </div>
                 </div>
               </div>
-              
+
               <div style={{ padding: '0 16px 16px' }}>
                 {rescheduleMode === 'reschedule' && newRescheduleDate && newRescheduleDate < new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0] && (
                   <div style={{ color: '#ef4444', fontSize: '0.75rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: '16px' }}>
@@ -2108,7 +2108,7 @@ const CalendarPage = () => {
                   </div>
                 )}
               </div>
-              
+
               <div className="clean-modal-footer" style={{ padding: '14px 20px', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: '10px', justifyContent: 'flex-end', background: 'rgba(0,0,0,0.02)' }}>
                 <button type="button" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: '0.9rem' }} onClick={() => setShowRescheduleModal(false)}>Close</button>
                 <button type="submit" className="schedule-submit-btn" style={{ margin: 0, padding: '8px 24px', fontSize: '0.9rem', minWidth: '120px' }} disabled={loading || (rescheduleMode === 'reschedule' && newRescheduleDate && newRescheduleDate < new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().split('T')[0])}>

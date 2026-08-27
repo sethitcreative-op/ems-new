@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS attendance (
     user_id INT NOT NULL,
     date DATE NOT NULL,
     am_in DATETIME,
+    am_out DATETIME,
+    pm_in DATETIME,
     pm_out DATETIME,
     total_hours DECIMAL(5,2) DEFAULT 0.00,
     earnings DECIMAL(10,2) DEFAULT 0.00,

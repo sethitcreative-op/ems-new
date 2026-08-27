@@ -542,7 +542,7 @@ const ScheduleTrackerPage = () => {
                     onChange={(e) => setFormData({...formData, event_type: e.target.value})}
                   >
                     <option value="WS">Work Shift (WS)</option>
-                    <option value="VL">Vacation Leave (VL)</option>
+                    <option value="VL">Leave (VL)</option>
                   </select>
                 </div>
 

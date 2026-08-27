@@ -13,8 +13,17 @@ const backgroundImages = [
 ];
 
 const Login = () => {
+  const getRememberedPassword = () => {
+    try {
+      const stored = localStorage.getItem('rememberedPassword');
+      return stored ? atob(stored) : '';
+    } catch (e) {
+      return '';
+    }
+  };
+
   const [email, setEmail] = useState(localStorage.getItem('rememberedEmail') || '');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(getRememberedPassword());
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(localStorage.getItem('rememberMe') === 'true');
   const [error, setError] = useState('');
@@ -46,14 +55,18 @@ const Login = () => {
       });
 
       if (response.data && response.data.status === 'success') {
+        const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours
         localStorage.setItem('token', response.data.token);
+        localStorage.setItem('tokenExpiry', expiryTime);
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         if (rememberMe) {
           localStorage.setItem('rememberedEmail', email);
+          localStorage.setItem('rememberedPassword', btoa(password));
           localStorage.setItem('rememberMe', 'true');
         } else {
           localStorage.removeItem('rememberedEmail');
+          localStorage.removeItem('rememberedPassword');
           localStorage.removeItem('rememberMe');
         }
 
@@ -117,13 +130,13 @@ const Login = () => {
 
           <form onSubmit={handleLogin} className="login-form">
             <div className="input-group">
-              <label className="input-label">Email:</label>
+              <label className="input-label">Email or Username:</label>
               <div className="input-wrapper">
                 <Mail size={20} className="input-icon" />
                 <input
-                  type="email"
+                  type="text"
                   className="input-field"
-                  placeholder="Enter your email"
+                  placeholder="Enter your email or username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -164,6 +177,7 @@ const Login = () => {
                     setRememberMe(checked);
                     if (!checked) {
                       localStorage.removeItem('rememberedEmail');
+                      localStorage.removeItem('rememberedPassword');
                       localStorage.removeItem('rememberMe');
                     } else {
                       localStorage.setItem('rememberMe', 'true');

@@ -7,7 +7,39 @@ require_once '../config/logger.php';
 $data = json_decode(file_get_contents("php://input"));
 $action = isset($_GET['action']) ? $_GET['action'] : (isset($data->action) ? $data->action : '');
 
-if ($action === 'clock_in') {
+function calculateTotalHours($am_in, $am_out, $pm_in, $pm_out) {
+    $total_hours = 0;
+    $t_am_in = $am_in ? strtotime($am_in) : null;
+    $t_am_out = $am_out ? strtotime($am_out) : null;
+    $t_pm_in = $pm_in ? strtotime($pm_in) : null;
+    $t_pm_out = $pm_out ? strtotime($pm_out) : null;
+
+    if ($t_am_in && $t_pm_out) {
+        // We have start and end punches
+        if ($t_am_out && $t_pm_in) {
+            // All punches exist
+            $total_hours += max(0, $t_am_out - $t_am_in) / 3600;
+            $total_hours += max(0, $t_pm_out - $t_pm_in) / 3600;
+        } else {
+            // Missing some middle punches, deduct standard 1hr lunch if continuous duration > 5 hrs
+            $total_hours = max(0, $t_pm_out - $t_am_in) / 3600;
+            if ($total_hours >= 5) {
+                $total_hours -= 1;
+            }
+        }
+    } else {
+        // Missing either start or end punch of the full day, process what we have
+        if ($t_am_in && $t_am_out) {
+            $total_hours += max(0, $t_am_out - $t_am_in) / 3600;
+        }
+        if ($t_pm_in && $t_pm_out) {
+            $total_hours += max(0, $t_pm_out - $t_pm_in) / 3600;
+        }
+    }
+    return round($total_hours, 2);
+}
+
+if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
     $user_id = $data->user_id;
     
     // Use server's reliable time to prevent time theft
@@ -15,40 +47,33 @@ if ($action === 'clock_in') {
     $server_date = date('Y-m-d');
     $server_datetime = $server_date . ' ' . $server_time;
     
-    $query = "INSERT INTO attendance (user_id, date, am_in, status) VALUES (:user_id, :server_date, :server_datetime, 'Present') 
-              ON DUPLICATE KEY UPDATE am_in = IF(am_in IS NULL, VALUES(am_in), am_in), status = 'Present'";
-    $stmt = $conn->prepare($query);
-    $stmt->execute([':user_id' => $user_id, ':server_date' => $server_date, ':server_datetime' => $server_datetime]);
-    logAction($conn, $user_id, 'DTR_CLOCK_IN', "Employee successfully clocked in for their shift at {$server_datetime}.");
-    echo json_encode(["status" => "success", "message" => "Clocked in successfully"]);
-    
-} elseif ($action === 'clock_out') {
-    $user_id = $data->user_id;
-    
-    // Use server's reliable time to prevent time theft
-    $server_time = date('H:i:s');
-    $server_date = date('Y-m-d');
-    $server_datetime = $server_date . ' ' . $server_time;
-    
-    // Fetch the latest active shift (pm_out IS NULL) for the user for the current server date
-    $fetch_query = "SELECT a.id, a.am_in, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.user_id = :user_id AND a.pm_out IS NULL AND a.date = :server_date ORDER BY a.date DESC LIMIT 1";
+    // Fetch the existing record for the user for the current server date
+    $fetch_query = "SELECT a.*, u.hourly_rate FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.user_id = :user_id AND a.date = :server_date ORDER BY a.id DESC LIMIT 1";
     $fetch_stmt = $conn->prepare($fetch_query);
     $fetch_stmt->execute([':user_id' => $user_id, ':server_date' => $server_date]);
     $record = $fetch_stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($record && $record['am_in']) {
-        // Calculate total hours using the full DATETIME difference
-        $am_in_seconds = strtotime($record['am_in']);
-        $pm_out_seconds = strtotime($server_datetime);
-        $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
-        $total_hours = round($diff_seconds / 3600, 2);
-        $earnings = round($total_hours * $record['hourly_rate'], 2);
+    $action_name = strtoupper(str_replace('_', ' ', $action));
+    
+    if (!$record) {
+        $query = "INSERT INTO attendance (user_id, date, {$action}, status) VALUES (:user_id, :server_date, :server_datetime, 'Present')";
+        $stmt = $conn->prepare($query);
+        $stmt->execute([':user_id' => $user_id, ':server_date' => $server_date, ':server_datetime' => $server_datetime]);
+        logAction($conn, $user_id, "DTR_".strtoupper($action), "Employee logged {$action_name} at {$server_datetime}.");
+        echo json_encode(["status" => "success", "message" => "{$action_name} logged successfully"]);
+    } else {
+        $am_in = $action === 'am_in' ? $server_datetime : $record['am_in'];
+        $am_out = $action === 'am_out' ? $server_datetime : $record['am_out'];
+        $pm_in = $action === 'pm_in' ? $server_datetime : $record['pm_in'];
+        $pm_out = $action === 'pm_out' ? $server_datetime : $record['pm_out'];
         
-        $query = "UPDATE attendance 
-                  SET pm_out = :server_datetime, 
-                      total_hours = :total_hours,
-                      earnings = :earnings
-                  WHERE id = :id";
+        $total_hours = calculateTotalHours($am_in, $am_out, $pm_in, $pm_out);
+        
+        // Always resolve hourly_rate
+        $rate = $record['hourly_rate'] ? $record['hourly_rate'] : 0;
+        $earnings = round($total_hours * $rate, 2);
+        
+        $query = "UPDATE attendance SET {$action} = :server_datetime, total_hours = :total_hours, earnings = :earnings WHERE id = :id";
         $stmt = $conn->prepare($query);
         $stmt->execute([
             ':server_datetime' => $server_datetime,
@@ -56,25 +81,26 @@ if ($action === 'clock_in') {
             ':earnings' => $earnings,
             ':id' => $record['id']
         ]);
-        logAction($conn, $user_id, 'DTR_CLOCK_OUT', "Employee successfully clocked out for their shift at {$server_datetime} (Total Hours Logged: {$total_hours}).");
-        echo json_encode(["status" => "success", "message" => "Clocked out successfully"]);
-    } else {
-        echo json_encode(["status" => "error", "message" => "No Active Shift found."]);
+        logAction($conn, $user_id, "DTR_".strtoupper($action), "Employee logged {$action_name} at {$server_datetime} (Total Hours Logged: {$total_hours}).");
+        echo json_encode(["status" => "success", "message" => "{$action_name} logged successfully"]);
     }
-
 } elseif ($action === 'get_records') {
     $server_date = date('Y-m-d');
     $yesterday   = date('Y-m-d', strtotime('-1 day'));
 
-    // ── 1. Auto-close past open shifts (forgot to PM OUT) up to 23:59:59 of that day ──
+        // ── 1. Auto-close past open shifts ──
     $auto_close_query = "
         UPDATE attendance a
         JOIN users u ON a.user_id = u.id
-        SET a.pm_out = CONCAT(a.date, ' 23:59:59'),
-            a.total_hours = ROUND(TIMESTAMPDIFF(SECOND, a.am_in, CONCAT(a.date, ' 23:59:59')) / 3600, 2),
-            a.earnings = ROUND((TIMESTAMPDIFF(SECOND, a.am_in, CONCAT(a.date, ' 23:59:59')) / 3600) * u.hourly_rate, 2)
-        WHERE a.pm_out IS NULL 
-          AND a.am_in IS NOT NULL 
+        SET a.total_hours = ROUND(
+                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
+                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
+            , 2),
+            a.earnings = ROUND((
+                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
+                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
+            ) * u.hourly_rate, 2)
+        WHERE (a.pm_in IS NOT NULL AND a.pm_out IS NULL) OR (a.am_in IS NOT NULL AND a.am_out IS NULL)
           AND a.date < :server_date
     ";
     $auto_close_stmt = $conn->prepare($auto_close_query);
@@ -89,6 +115,12 @@ if ($action === 'clock_in') {
     foreach ($allUsers as $u) {
         $uid        = $u['id'];
         $startDate  = $u['joined_date'] ?? '2024-01-01';
+
+        // Optimization: Only look back up to 30 days to prevent massive query delays
+        $thirtyDaysAgo = date('Y-m-d', strtotime('-30 days'));
+        if ($startDate < $thirtyDaysAgo) {
+            $startDate = $thirtyDaysAgo;
+        }
 
         // Batch-insert Absent for every past date with no attendance record,
         // excluding dates covered by a holiday or an approved leave request
@@ -199,6 +231,8 @@ if ($action === 'clock_in') {
     // Admin Edit Record
     $record_id = $data->record_id;
     $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
+    $am_out = isset($data->am_out) && $data->am_out !== '' ? $data->am_out : null;
+    $pm_in = isset($data->pm_in) && $data->pm_in !== '' ? $data->pm_in : null;
     $pm_out = isset($data->pm_out) && $data->pm_out !== '' ? $data->pm_out : null;
     $status = isset($data->status) ? $data->status : 'Present';
     
@@ -212,24 +246,17 @@ if ($action === 'clock_in') {
         $total_hours = 0;
         $earnings = 0;
         
-        if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
-            $am_in_seconds = strtotime($am_in);
-            $pm_out_seconds = strtotime($pm_out);
-            
-            if ($pm_out_seconds < $am_in_seconds) {
-                $pm_out = date('Y-m-d H:i:s', $pm_out_seconds + 86400);
-                $pm_out_seconds += 86400;
-            }
-
-            $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
-            $total_hours = round($diff_seconds / 3600, 2);
+        if (!in_array($status, ['Absent', 'Leave', 'Holiday'])) {
+            $total_hours = calculateTotalHours($am_in, $am_out, $pm_in, $pm_out);
             $earnings = round($total_hours * $record['hourly_rate'], 2);
         }
 
-        $query = "UPDATE attendance SET am_in = :am_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status WHERE id = :record_id";
+        $query = "UPDATE attendance SET am_in = :am_in, am_out = :am_out, pm_in = :pm_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status WHERE id = :record_id";
         $stmt = $conn->prepare($query);
         $stmt->execute([
             ':am_in' => $am_in,
+            ':am_out' => $am_out,
+            ':pm_in' => $pm_in,
             ':pm_out' => $pm_out,
             ':total_hours' => $total_hours,
             ':earnings' => $earnings,
@@ -237,19 +264,17 @@ if ($action === 'clock_in') {
             ':record_id' => $record_id
         ]);
         
-        // Log action (assuming admin is performing this, but we don't have admin ID in $data unless passed, we'll log against the affected user_id for simplicity or skip)
-        // logAction($conn, $record['user_id'], 'DTR_ADMIN_EDIT', "Admin edited record {$record_id}");
-        
         echo json_encode(["status" => "success", "message" => "Record updated successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "Record not found"]);
     }
-
 } elseif ($action === 'add_record') {
     // Admin Add Record
     $user_id = $data->user_id;
     $date = $data->date;
     $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
+    $am_out = isset($data->am_out) && $data->am_out !== '' ? $data->am_out : null;
+    $pm_in = isset($data->pm_in) && $data->pm_in !== '' ? $data->pm_in : null;
     $pm_out = isset($data->pm_out) && $data->pm_out !== '' ? $data->pm_out : null;
     $status = isset($data->status) ? $data->status : 'Present';
     
@@ -262,28 +287,21 @@ if ($action === 'clock_in') {
         $total_hours = 0;
         $earnings = 0;
 
-        if ($am_in && $pm_out && !in_array($status, ['Absent', 'Leave', 'Holiday'])) {
-            $am_in_seconds = strtotime($am_in);
-            $pm_out_seconds = strtotime($pm_out);
-            
-            if ($pm_out_seconds < $am_in_seconds) {
-                $pm_out = date('Y-m-d H:i:s', $pm_out_seconds + 86400);
-                $pm_out_seconds += 86400;
-            }
-
-            $diff_seconds = max(0, $pm_out_seconds - $am_in_seconds);
-            $total_hours = round($diff_seconds / 3600, 2);
+        if (!in_array($status, ['Absent', 'Leave', 'Holiday'])) {
+            $total_hours = calculateTotalHours($am_in, $am_out, $pm_in, $pm_out);
             $earnings = round($total_hours * $user['hourly_rate'], 2);
         }
 
-        $query = "INSERT INTO attendance (user_id, date, am_in, pm_out, total_hours, earnings, status) 
-                  VALUES (:user_id, :date, :am_in, :pm_out, :total_hours, :earnings, :status)
-                  ON DUPLICATE KEY UPDATE am_in = :am_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status";
+        $query = "INSERT INTO attendance (user_id, date, am_in, am_out, pm_in, pm_out, total_hours, earnings, status) 
+                  VALUES (:user_id, :date, :am_in, :am_out, :pm_in, :pm_out, :total_hours, :earnings, :status)
+                  ON DUPLICATE KEY UPDATE am_in = :am_in, am_out = :am_out, pm_in = :pm_in, pm_out = :pm_out, total_hours = :total_hours, earnings = :earnings, status = :status";
         $stmt = $conn->prepare($query);
         $stmt->execute([
             ':user_id' => $user_id,
             ':date' => $date,
             ':am_in' => $am_in,
+            ':am_out' => $am_out,
+            ':pm_in' => $pm_in,
             ':pm_out' => $pm_out,
             ':total_hours' => $total_hours,
             ':earnings' => $earnings,
@@ -294,7 +312,6 @@ if ($action === 'clock_in') {
     } else {
         echo json_encode(["status" => "error", "message" => "User not found"]);
     }
-
 } elseif ($action === 'delete_record') {
     $record_id = isset($_GET['record_id']) ? $_GET['record_id'] : (isset($data->record_id) ? $data->record_id : null);
     if ($record_id) {

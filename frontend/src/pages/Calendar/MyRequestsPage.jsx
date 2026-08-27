@@ -150,7 +150,7 @@ const MyRequestsPage = () => {
           >
             <option value="All">All Types</option>
             <option value="WS">Work Shift</option>
-            <option value="VL">Vacation Leave</option>
+            <option value="VL">Leave</option>
           </select>
           <button 
             className="btn btn-primary" 
@@ -296,7 +296,7 @@ const MyRequestsPage = () => {
                     <td>{req.created_at ? formatLocalDate(req.created_at) : new Date().toLocaleDateString()}</td>
                     <td style={{ verticalAlign: 'middle' }}>
                       <span className={`event-badge event-type-${req.event_type === 'Other' ? 'WS' : req.event_type}`} style={{ display: 'inline-block', width: 'max-content' }}>
-                        {req.event_type === 'WS' || req.title === 'Work Shift' ? 'Work Shift' : req.event_type === 'VL' ? 'Vacation Leave' : req.event_type === 'HL' ? 'Holiday' : req.event_type}
+                        {req.event_type === 'WS' || req.title === 'Work Shift' ? 'Work Shift' : req.event_type === 'VL' ? 'Leave' : req.event_type === 'HL' ? 'Holiday' : req.event_type}
                       </span>
                     </td>
                     <td>{formatLocalDate(req.event_date)}</td>

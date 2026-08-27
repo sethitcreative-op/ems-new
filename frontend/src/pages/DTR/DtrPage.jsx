@@ -13,21 +13,25 @@ const ActiveTimer = ({ activeShift }) => {
 
   useEffect(() => {
     let interval;
-    if (activeShift && activeShift.am_in) {
+    if (activeShift && (activeShift.am_in || activeShift.pm_in)) {
       const calculateElapsed = () => {
         const nowString = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
         const now = new Date(nowString);
-        const amInStr = activeShift.am_in;
-        const recordDate = activeShift.date;
-        let amInDate;
 
-        if (amInStr.includes(' ')) {
-          amInDate = new Date(amInStr.replace(/-/g, '/'));
+        // Pick the active start time (if am_in is set but no am_out, it's AM. If pm_in is set but no pm_out, it's PM)
+        const activeStr = (activeShift.am_in && !activeShift.am_out) ? activeShift.am_in : activeShift.pm_in;
+        if (!activeStr) return 0;
+
+        const recordDate = activeShift.date;
+        let activeDate;
+
+        if (activeStr.includes(' ')) {
+          activeDate = new Date(activeStr.replace(/-/g, '/'));
         } else {
-          amInDate = new Date(`${recordDate} ${amInStr}`.replace(/-/g, '/'));
+          activeDate = new Date(`${recordDate} ${activeStr}`.replace(/-/g, '/'));
         }
 
-        const diffInSeconds = Math.floor((now - amInDate) / 1000);
+        const diffInSeconds = Math.floor((now - activeDate) / 1000);
         return diffInSeconds > 0 ? diffInSeconds : 0;
       };
 
@@ -189,6 +193,8 @@ const DtrPage = () => {
   const [pdfColumns, setPdfColumns] = useState({
     name: true,
     amIn: true,
+    amOut: true,
+    pmIn: true,
     pmOut: true,
     totalHrs: true,
     rate: true,
@@ -225,6 +231,8 @@ const DtrPage = () => {
     targetUserId: null,
     dateStr: '',
     amIn: '',
+    amOut: '',
+    pmIn: '',
     pmOut: '',
     status: 'Present'
   });
@@ -339,6 +347,8 @@ const DtrPage = () => {
         targetUserId: record.user_id,
         dateStr: record.date,
         amIn: record.am_in ? record.am_in.split(' ')[1] : '',
+        amOut: record.am_out ? record.am_out.split(' ')[1] : '',
+        pmIn: record.pm_in ? record.pm_in.split(' ')[1] : '',
         pmOut: record.pm_out ? record.pm_out.split(' ')[1] : '',
         status: record.status || 'Present'
       });
@@ -350,6 +360,8 @@ const DtrPage = () => {
         targetUserId: targetUserId,
         dateStr: dayObj.dateStr,
         amIn: '',
+        amOut: '',
+        pmIn: '',
         pmOut: '',
         status: 'Present'
       });
@@ -359,6 +371,8 @@ const DtrPage = () => {
   const handleSaveModal = async () => {
     try {
       const amInDate = editModal.amIn ? `${editModal.dateStr} ${editModal.amIn}` : '';
+      const amOutDate = editModal.amOut ? `${editModal.dateStr} ${editModal.amOut}` : '';
+      const pmInDate = editModal.pmIn ? `${editModal.dateStr} ${editModal.pmIn}` : '';
       const pmOutDate = editModal.pmOut ? `${editModal.dateStr} ${editModal.pmOut}` : '';
 
       const payload = {
@@ -367,6 +381,8 @@ const DtrPage = () => {
         user_id: editModal.targetUserId,
         date: editModal.dateStr,
         am_in: amInDate,
+        am_out: amOutDate,
+        pm_in: pmInDate,
         pm_out: pmOutDate,
         status: editModal.status
       };
@@ -408,44 +424,27 @@ const DtrPage = () => {
   };
 
 
-  const handleClockIn = async () => {
+  const handleClockAction = async (actionType) => {
     setLoading(true);
     try {
       const timeStr = getLocalTimeStr();
-      await axios.post(`${API_BASE}/dtr.php`, {
-        action: 'clock_in',
+      const res = await axios.post(`${API_BASE}/dtr.php`, {
+        action: actionType,
         user_id: user.id,
         client_time: timeStr,
         client_date: getLocalDateStr()
       });
-      addNotification({ type: 'success', message: `AM IN logged successfully at ${timeStr}` });
-      // Re-fetch all data sources so the DTR stays in sync with latest state
-      fetchRecords();
-      fetchEvents();
-      fetchLeaveRequests();
+      if (res.data.status === 'success') {
+        addNotification({ type: 'success', message: res.data.message });
+        fetchRecords();
+        fetchEvents();
+        fetchLeaveRequests();
+      } else {
+        addNotification({ type: 'error', message: res.data.message });
+      }
     } catch (err) {
       console.error(err);
-    }
-    setLoading(false);
-  };
-
-  const handleClockOut = async () => {
-    setLoading(true);
-    try {
-      const timeStr = getLocalTimeStr();
-      await axios.post(`${API_BASE}/dtr.php`, {
-        action: 'clock_out',
-        user_id: user.id,
-        client_time: timeStr,
-        client_date: getLocalDateStr()
-      });
-      addNotification({ type: 'success', message: `PM OUT logged successfully at ${timeStr}` });
-      // Re-fetch all data sources so the DTR stays in sync with latest state
-      fetchRecords();
-      fetchEvents();
-      fetchLeaveRequests();
-    } catch (err) {
-      console.error(err);
+      addNotification({ type: 'error', message: 'Failed to record time.' });
     }
     setLoading(false);
   };
@@ -533,14 +532,18 @@ const DtrPage = () => {
   // Clock Restrictions (Check for Active Shift and Today's Record)
   const todayDateStr = getLocalDateStr();
   const myRecords = records.filter(r => String(r.user_id) === String(user.id));
-  const myActiveShift = myRecords.find(r => r.am_in && !r.pm_out && r.date === todayDateStr);
   const myTodayRecord = myRecords.find(r => r.date === todayDateStr);
 
-  const displayActiveShift = tableRecords.find(r => r.am_in && !r.pm_out && r.date === todayDateStr);
+  const displayActiveShift = tableRecords.find(r => (r.am_in && !r.am_out && r.date === todayDateStr) || (r.pm_in && !r.pm_out && r.date === todayDateStr));
   const displayTodayRecord = tableRecords.find(r => r.date === todayDateStr);
 
-  const isAmInDisabled = loading || !!myActiveShift || !!myTodayRecord;
-  const isPmOutDisabled = loading || !myActiveShift;
+  const currentHour = new Date().getHours();
+  const isAM = currentHour < 12;
+
+  const isAmInDisabled = loading || !!myTodayRecord?.am_in;
+  const isAmOutDisabled = loading || !!myTodayRecord?.am_out;
+  const isPmInDisabled = loading || !!myTodayRecord?.pm_in;
+  const isPmOutDisabled = loading || !!myTodayRecord?.pm_out;
 
   // --- ADMIN EXPORT LOGIC ---
   const handlePresetExport = (type) => {
@@ -631,10 +634,9 @@ const DtrPage = () => {
       }
     });
 
-    const tableColumn = ["NAME", "TOTAL HRS", "TOTAL RATE", "EARNINGS"];
+    const tableColumn = ["NAME", "TOTAL HRS", "TOTAL PAY"];
 
     let grandTotalHrs = 0;
-    let grandTotalRate = 0;
     let grandTotalEarnings = 0;
 
     const tableRows = Object.values(grouped).map(record => {
@@ -642,12 +644,10 @@ const DtrPage = () => {
       const rate = parseFloat(record.hourly_rate || 0);
       const earnings = hrs * rate;
       grandTotalHrs += hrs;
-      grandTotalRate += rate;
       grandTotalEarnings += earnings;
       return [
         record.full_name,
         hrs > 0 ? formatHoursDuration(hrs) : '0h',
-        `$${rate.toFixed(2)}`,
         `$${earnings.toFixed(2)}`
       ];
     });
@@ -656,7 +656,6 @@ const DtrPage = () => {
     tableRows.push([
       "GRAND TOTAL",
       formatHoursDuration(grandTotalHrs),
-      `$${grandTotalRate.toFixed(2)}`,
       `$${grandTotalEarnings.toFixed(2)}`
     ]);
 
@@ -689,752 +688,898 @@ const DtrPage = () => {
     doc.save(`Weekly Payroll Summary Report.pdf`);
   };
 
-  const exportPDF = (customStart = startDate, customEnd = endDate, exportType = 'custom', usersToExport = customExportUsers) => {
-    if (exportType === 'weekly') {
-      exportWeeklySchedulePDF(customStart, customEnd, usersToExport);
-      return;
-    }
+  const handleEmployeePdfExport = () => {
+      const doc = new jsPDF({ orientation: 'portrait' });
 
-    let currentRecords = records;
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text("Attendance Record", 105, 20, { align: "center" });
 
-    // 1. Filter by User
-    if (!usersToExport.includes('all')) {
-      currentRecords = currentRecords.filter(r => usersToExport.includes(String(r.user_id)));
-    }
+      doc.setFontSize(11);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Employee: ${user.full_name}`, 14, 30);
 
-    // 2. Filter by Date Range
-    if (customStart) currentRecords = currentRecords.filter(r => r.date >= customStart);
-    if (customEnd) currentRecords = currentRecords.filter(r => r.date <= customEnd);
-
-    // 3. Sort Records by Date (ascending)
-    currentRecords.sort((a, b) => {
-      const dateA = new Date(a.date);
-      const dateB = new Date(b.date);
-      return dateA - dateB;
-    });
-
-    const doc = new jsPDF({ orientation: 'landscape' });
-
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    // Center for landscape A4 is 148.5 (width is 297)
-    doc.text("Payroll Report", 148.5, 20, { align: "center" });
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(100, 116, 139);
-
-    const formatMMDDYYYY = (dateStr) => {
-      if (!dateStr) return 'All Time';
-      const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
-      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
-    };
-    const cycleStr = (customStart && customEnd) ? `${formatMMDDYYYY(customStart)} to ${formatMMDDYYYY(customEnd)}` : "All Records";
-    doc.text(`Cycle: ${cycleStr}`, 148.5, 28, { align: "center" });
-
-
-
-    const tableColumn = [];
-    const dataKeys = [];
-
-    if (pdfColumns.name) { tableColumn.push("NAME"); dataKeys.push("full_name"); }
-    if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
-    if (pdfColumns.rate) { tableColumn.push("TOTAL RATE"); dataKeys.push("hourly_rate"); }
-    if (pdfColumns.earnings) { tableColumn.push("EARNINGS"); dataKeys.push("earnings"); }
-
-    const grouped = {};
-    currentRecords.forEach(r => {
-      const uid = r.user_id;
-      // Always resolve hourly_rate from the employees list for accuracy
-      const empRate = parseFloat(employees.find(e => String(e.id) === String(uid))?.hourly_rate || r.hourly_rate || 0);
-      if (!grouped[uid]) {
-        grouped[uid] = {
-          ...r,
-          hourly_rate: empRate,
-          total_hours: 0,
-          status: 'Present',
-          full_name: r.full_name || employees.find(e => String(e.id) === String(uid))?.full_name || user.full_name
-        };
+      let filterText = "";
+      if (dtrFilterType === 'month') {
+        const [y, m] = dtrFilterValue.split('-');
+        const d = new Date(y, m - 1);
+        filterText = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      } else if (dtrFilterType === 'week') {
+        filterText = `Week of ${dtrFilterValue}`;
       } else {
-        // Ensure hourly_rate is always set even if first record didn't have it
-        if (!grouped[uid].hourly_rate) grouped[uid].hourly_rate = empRate;
+        filterText = dtrFilterValue;
       }
-      if (r.status !== 'Absent') {
-        grouped[uid].total_hours += parseFloat(r.total_hours || 0);
-      }
-    });
-    let recordsToProcess = Object.values(grouped);
+      doc.text(`Period: ${filterText}`, 14, 36);
 
-    let grandTotalHrs = 0;
-    let grandTotalRate = 0;
-    let grandTotalEarnings = 0;
+      const tableColumn = ["DATE", "AM IN", "AM OUT", "PM IN", "PM OUT", "HRS", "STATUS"];
+      const tableRows = [];
+      let totalHrs = 0;
 
-    const tableRows = [];
-    recordsToProcess.forEach(record => {
-      const rowData = [];
-      const recordHrs = parseFloat(record.total_hours || 0);
-      const recordRate = parseFloat(record.hourly_rate || employees.find(e => String(e.id) === String(record.user_id))?.hourly_rate || 0);
-      const recordEarnings = recordHrs * recordRate;
+      filteredDays.forEach(dayObj => {
+        const dailyRecords = tableRecords.filter(r => r.date === dayObj.dateStr);
+        const row = dailyRecords[0];
+        const targetUserId = user.id;
 
-      if (record.status !== 'Absent') {
-        grandTotalHrs += recordHrs;
-        grandTotalRate += recordRate;
-        grandTotalEarnings += recordEarnings;
-      }
+        const approvedLeaveForDay = leaveRequests.find(lr =>
+          String(lr.user_id) === String(targetUserId) &&
+          dayObj.dateStr >= lr.start_date &&
+          dayObj.dateStr <= lr.end_date
+        );
 
-      dataKeys.forEach(key => {
-        const isSpecialStatus = ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(record.status);
-        const displayStatus = record.status ? record.status.toUpperCase() : '';
+        let virtualStatus = '';
+        if (!row) {
+          if (approvedLeaveForDay) {
+            virtualStatus = 'LEAVE';
+          } else {
+            const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
+            const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
+            const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
+            const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'))
+              || dailyEvents.find(e => e.status === 'approved');
 
-        if (key === 'date') rowData.push(record.date);
-        if (key === 'status') rowData.push(displayStatus);
-        if (key === 'full_name') rowData.push(record.full_name);
-        if (key === 'am_in') rowData.push(isSpecialStatus ? '---' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
-        if (key === 'pm_out') rowData.push(isSpecialStatus ? '---' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
-        if (key === 'total_hours') rowData.push(isSpecialStatus ? '---' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
-        if (key === 'hourly_rate') rowData.push(isSpecialStatus ? '' : `$${recordRate.toFixed(2)}`);
-        if (key === 'earnings') {
-          rowData.push(isSpecialStatus ? '' : `$${recordEarnings.toFixed(2)}`);
+            if (approved) {
+              if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
+              else if (approved.event_type === 'HL' || approved.event_type === 'Holiday') virtualStatus = 'HOLIDAY';
+              else virtualStatus = 'SCHEDULED';
+            } else if (pendingReschedule) {
+              virtualStatus = 'PENDING RESCHEDULE';
+            } else if (pendingNew) {
+              virtualStatus = 'PENDING SCHEDULE';
+            }
+          }
         }
+
+        const hrs = row ? parseFloat(row.total_hours) || 0 : 0;
+        totalHrs += hrs;
+
+        const isSpecialStatus = (row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status)) || (!row && virtualStatus === 'LEAVE');
+        const displayStatus = row && row.status ? row.status.toUpperCase() : virtualStatus;
+
+        tableRows.push([
+          dayObj.dateStr,
+          isSpecialStatus ? '---' : (row && row.am_in ? formatTime(row.am_in, row.date) : '--:--'),
+          isSpecialStatus ? '---' : (row && row.am_out ? formatTime(row.am_out, row.date) : '--:--'),
+          isSpecialStatus ? '---' : (row && row.pm_in ? formatTime(row.pm_in, row.date) : '--:--'),
+          isSpecialStatus ? '---' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '--:--'),
+          isSpecialStatus ? '---' : (hrs ? formatHoursDuration(hrs) : ''),
+          displayStatus
+        ]);
       });
-      tableRows.push(rowData);
-    });
 
-    const grandTotalRow = [];
-    dataKeys.forEach((key, index) => {
-      if (index === 0) grandTotalRow.push("GRAND TOTAL");
-      else if (key === 'total_hours') grandTotalRow.push(formatHoursDuration(grandTotalHrs));
-      else if (key === 'hourly_rate') grandTotalRow.push(`$${grandTotalRate.toFixed(2)}`);
-      else if (key === 'earnings') grandTotalRow.push(`$${grandTotalEarnings.toFixed(2)}`);
-      else grandTotalRow.push("");
-    });
-    tableRows.push(grandTotalRow);
+      tableRows.push(["TOTAL", "", "", "", "", formatHoursDuration(totalHrs), ""]);
 
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 40,
-      theme: 'grid',
-      headStyles: { fillColor: [200, 240, 210], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
-      bodyStyles: { textColor: [0, 0, 0], halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
-      alternateRowStyles: { fillColor: [255, 255, 255] },
-      styles: { font: 'helvetica', fontSize: 10, cellPadding: 6, fontStyle: 'bold', lineWidth: 0.5, lineColor: [0, 0, 0] },
-      didParseCell: function (data) {
-        if (data.row.raw[0] === 'GRAND TOTAL') {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [200, 240, 210];
-        }
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 42,
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        bodyStyles: { textColor: [0, 0, 0], halign: 'center' },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, lineWidth: 0.1, lineColor: [226, 232, 240] },
+        columnStyles: { 0: { halign: 'left' } }
+      });
+
+      doc.save(`Attendance_Record_${user.full_name}_${dtrFilterValue}.pdf`);
+    };
+
+    const exportPDF = (customStart = startDate, customEnd = endDate, exportType = 'custom', usersToExport = customExportUsers) => {
+      if (exportType === 'weekly') {
+        exportWeeklySchedulePDF(customStart, customEnd, usersToExport);
+        return;
       }
-    });
 
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(9);
+      let currentRecords = records;
+
+      // 1. Filter by User
+      if (!usersToExport.includes('all')) {
+        currentRecords = currentRecords.filter(r => usersToExport.includes(String(r.user_id)));
+      }
+
+      // 2. Filter by Date Range
+      if (customStart) currentRecords = currentRecords.filter(r => r.date >= customStart);
+      if (customEnd) currentRecords = currentRecords.filter(r => r.date <= customEnd);
+
+      // 3. Sort Records by Date (ascending)
+      currentRecords.sort((a, b) => {
+        const dateA = new Date(a.date);
+        const dateB = new Date(b.date);
+        return dateA - dateB;
+      });
+
+      const doc = new jsPDF({ orientation: 'landscape' });
+
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      // Center for landscape A4 is 148.5 (width is 297)
+      doc.text("Payroll Report", 148.5, 20, { align: "center" });
+
+      doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(100, 116, 139);
-      doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`, 280, 200, { align: 'right' });
-    }
 
-    let fileName = 'Payroll Summary Report.pdf';
-    if (exportType === 'monthly') fileName = 'Monthly Payroll Summary Report.pdf';
-    else if (exportType === 'yearly') fileName = 'Yearly Payroll Summary Report.pdf';
+      const formatMMDDYYYY = (dateStr) => {
+        if (!dateStr) return 'All Time';
+        const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+        return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-${d.getFullYear()}`;
+      };
+      const cycleStr = (customStart && customEnd) ? `${formatMMDDYYYY(customStart)} to ${formatMMDDYYYY(customEnd)}` : "All Records";
+      doc.text(`Cycle: ${cycleStr}`, 148.5, 28, { align: "center" });
 
-    doc.save(fileName);
-  };
 
-  return (
-    <div className="page-container">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Daily Time Record</h1>
-          <p className="page-subtitle">Track attendance and manage schedules</p>
-        </div>
 
-        <div className="action-buttons">
-          <button className="btn btn-success dtr-action-btn" onClick={handleClockIn} disabled={isAmInDisabled}>
-            <CheckCircle size={20} /> AM IN
-          </button>
-          <button className="btn btn-danger dtr-action-btn" onClick={handleClockOut} disabled={isPmOutDisabled}>
-            {myTodayRecord?.pm_out ? <CheckCircle size={20} /> : <Clock size={20} />} PM OUT
-          </button>
-        </div>
-      </div>
+      const tableColumn = [];
+      const dataKeys = [];
 
-      {/* Admin Export Panel */}
-      {isAdmin && (
-        <div className="premium-admin-card" style={{ padding: showExportCenter ? '24px 30px' : '16px 30px' }}>
-          <div
-            className="admin-card-header"
-            style={{
-              borderBottom: showExportCenter ? '1px solid var(--glass-border)' : 'none',
-              marginBottom: showExportCenter ? '24px' : '0',
-              paddingBottom: showExportCenter ? '16px' : '0',
-              cursor: 'pointer'
-            }}
-            onClick={() => setShowExportCenter(!showExportCenter)}
-          >
-            <div className="admin-card-title">
-              <div style={{ padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
-                <Filter size={20} color="var(--primary)" />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '0.5px' }}>Attendance and Payroll Management</h3>
-                {showExportCenter && <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Generate specific reports and payroll records.</p>}
-              </div>
-            </div>
-            <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setShowExportCenter(!showExportCenter); }}>
-              <ChevronDown size={20} style={{ transform: showExportCenter ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }} />
-            </button>
+      if (exportType === 'monthly' || exportType === 'yearly') {
+        tableColumn.push("NAME", "TOTAL HRS", "TOTAL PAY");
+        dataKeys.push("full_name", "total_hours", "earnings");
+      } else {
+        if (pdfColumns.name) { tableColumn.push("NAME"); dataKeys.push("full_name"); }
+        if (pdfColumns.totalHrs) { tableColumn.push("TOTAL HRS"); dataKeys.push("total_hours"); }
+        if (pdfColumns.rate) { tableColumn.push("RATE"); dataKeys.push("hourly_rate"); }
+        if (pdfColumns.amIn) { tableColumn.push("AM IN"); dataKeys.push("am_in"); }
+        if (pdfColumns.amOut) { tableColumn.push("AM OUT"); dataKeys.push("am_out"); }
+        if (pdfColumns.pmIn) { tableColumn.push("PM IN"); dataKeys.push("pm_in"); }
+        if (pdfColumns.pmOut) { tableColumn.push("PM OUT"); dataKeys.push("pm_out"); }
+        if (pdfColumns.earnings) { tableColumn.push("TOTAL PAY"); dataKeys.push("earnings"); }
+      }
+
+      const grouped = {};
+      currentRecords.forEach(r => {
+        const uid = r.user_id;
+        // Always resolve hourly_rate from the employees list for accuracy
+        const empRate = parseFloat(employees.find(e => String(e.id) === String(uid))?.hourly_rate || r.hourly_rate || 0);
+        if (!grouped[uid]) {
+          grouped[uid] = {
+            ...r,
+            hourly_rate: empRate,
+            total_hours: 0,
+            status: 'Present',
+            full_name: r.full_name || employees.find(e => String(e.id) === String(uid))?.full_name || user.full_name
+          };
+        } else {
+          // Ensure hourly_rate is always set even if first record didn't have it
+          if (!grouped[uid].hourly_rate) grouped[uid].hourly_rate = empRate;
+        }
+        if (r.status !== 'Absent') {
+          grouped[uid].total_hours += parseFloat(r.total_hours || 0);
+        }
+      });
+      let recordsToProcess = Object.values(grouped);
+
+      let grandTotalHrs = 0;
+      let grandTotalEarnings = 0;
+
+      const tableRows = [];
+      recordsToProcess.forEach(record => {
+        const rowData = [];
+        const recordHrs = parseFloat(record.total_hours || 0);
+        const recordRate = parseFloat(record.hourly_rate || employees.find(e => String(e.id) === String(record.user_id))?.hourly_rate || 0);
+        const recordEarnings = recordHrs * recordRate;
+
+        if (record.status !== 'Absent') {
+          grandTotalHrs += recordHrs;
+          grandTotalEarnings += recordEarnings;
+        }
+
+        dataKeys.forEach(key => {
+          const isSpecialStatus = ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(record.status);
+          const displayStatus = record.status ? record.status.toUpperCase() : '';
+
+          if (key === 'date') rowData.push(record.date);
+          if (key === 'status') rowData.push(displayStatus);
+          if (key === 'full_name') rowData.push(record.full_name);
+          if (key === 'am_in') rowData.push(isSpecialStatus ? '---' : (record.am_in ? formatTime(record.am_in, record.date) : '--:--'));
+          if (key === 'am_out') rowData.push(isSpecialStatus ? '---' : (record.am_out ? formatTime(record.am_out, record.date) : '--:--'));
+          if (key === 'pm_in') rowData.push(isSpecialStatus ? '---' : (record.pm_in ? formatTime(record.pm_in, record.date) : '--:--'));
+          if (key === 'pm_out') rowData.push(isSpecialStatus ? '---' : (record.pm_out ? formatTime(record.pm_out, record.date) : '--:--'));
+          if (key === 'total_hours') rowData.push(isSpecialStatus ? '---' : (record.total_hours ? formatHoursDuration(record.total_hours) : '0h'));
+          if (key === 'hourly_rate') rowData.push(isSpecialStatus ? '' : `$${recordRate.toFixed(2)}`);
+          if (key === 'earnings') {
+            rowData.push(isSpecialStatus ? '' : `$${recordEarnings.toFixed(2)}`);
+          }
+        });
+        tableRows.push(rowData);
+      });
+
+      const grandTotalRow = [];
+      dataKeys.forEach((key, index) => {
+        if (index === 0) grandTotalRow.push("GRAND TOTAL");
+        else if (key === 'total_hours') grandTotalRow.push(formatHoursDuration(grandTotalHrs));
+        else if (key === 'hourly_rate') grandTotalRow.push("");
+        else if (key === 'earnings') grandTotalRow.push(`$${grandTotalEarnings.toFixed(2)}`);
+        else grandTotalRow.push("");
+      });
+      tableRows.push(grandTotalRow);
+
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 40,
+        theme: 'grid',
+        headStyles: { fillColor: [200, 240, 210], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+        bodyStyles: { textColor: [0, 0, 0], halign: 'center', lineWidth: 0.5, lineColor: [0, 0, 0] },
+        alternateRowStyles: { fillColor: [255, 255, 255] },
+        styles: { font: 'helvetica', fontSize: 10, cellPadding: 6, fontStyle: 'bold', lineWidth: 0.5, lineColor: [0, 0, 0] },
+        didParseCell: function (data) {
+          if (data.row.raw[0] === 'GRAND TOTAL') {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [200, 240, 210];
+          }
+        }
+      });
+
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`, 280, 200, { align: 'right' });
+      }
+
+      let fileName = 'Payroll Summary Report.pdf';
+      if (exportType === 'monthly') fileName = 'Monthly Payroll Summary Report.pdf';
+      else if (exportType === 'yearly') fileName = 'Yearly Payroll Summary Report.pdf';
+
+      doc.save(fileName);
+    };
+
+    return (
+      <div className="page-container">
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Daily Time Record</h1>
+            <p className="page-subtitle">Track attendance and manage schedules</p>
           </div>
 
-          {showExportCenter && (
-            <div className="animate-fade-in">
-              <div className="admin-controls-surface" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '16px' }}>
-
-                {/* Monthly Export Row */}
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                    <label>Select Month</label>
-                    <input
-                      type="month"
-                      className="premium-input"
-                      value={exportMonth}
-                      onChange={e => setExportMonth(e.target.value)}
-                    />
-                  </div>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                    <label>Employee</label>
-                    <MultiSelectDropdown
-                      options={employees}
-                      selected={monthlyExportUsers}
-                      onChange={setMonthlyExportUsers}
-                    />
-                  </div>
-                  <button className="btn btn-primary" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('monthly')}>
-                    <Download size={16} /> Monthly PDF Export
-                  </button>
-                </div>
-
-                {/* Weekly Export Row */}
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                    <label>Select Week</label>
-                    <CustomWeekPicker
-                      value={exportWeekStr}
-                      onChange={val => setExportWeekStr(val)}
-                    />
-                  </div>
-                  <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                    <label>Employee</label>
-                    <MultiSelectDropdown
-                      options={employees}
-                      selected={weeklyExportUsers}
-                      onChange={setWeeklyExportUsers}
-                    />
-                  </div>
-                  <button className="btn btn-primary" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('weekly')}>
-                    <Download size={16} /> Weekly PDF Export
-                  </button>
-                </div>
-
-                {/* Yearly Export Row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Annual Report</label>
-                    <p style={{ margin: '6px 0 0 0', fontSize: '0.9rem', color: 'var(--text-main)' }}>Generate a comprehensive report for the entire previous year automatically.</p>
-                  </div>
-                  <button className="btn btn-outline" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('yearly')}>
-                    <Download size={16} /> Yearly PDF Export
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'center' }}>
-                <button className="btn btn-ghost" onClick={() => setShowExportSettings(!showExportSettings)}>
-                  <Settings size={18} /> {showExportSettings ? 'Hide Advanced Settings' : 'Show Advanced Settings'}
-                </button>
-              </div>
-
-              {showExportSettings && (
-                <div className="advanced-settings-drawer">
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
-                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                      <label>Employee Target</label>
-                      <MultiSelectDropdown
-                        options={employees}
-                        selected={customExportUsers}
-                        onChange={setCustomExportUsers}
-                      />
-                    </div>
-                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                      <label>Custom Start Date</label>
-                      <input type="date" className="premium-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                    </div>
-                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
-                      <label>Custom End Date</label>
-                      <input type="date" className="premium-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, minWidth: '200px' }}>
-                      <button className="btn btn-primary" style={{ width: '100%', padding: '10px 16px', fontSize: '0.95rem' }} onClick={() => exportPDF()}>
-                        <Download size={18} /> Export Custom PDF
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="export-settings" style={{ marginTop: 0, background: 'transparent', padding: 0, border: 'none' }}>
-                    <h4 style={{ color: 'var(--text-main)', marginBottom: '16px' }}>Include Columns:</h4>
-                    <div className="checkbox-grid">
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.name} onChange={e => setPdfColumns({ ...pdfColumns, name: e.target.checked })} /> Name
-                      </label>
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.totalHrs} onChange={e => setPdfColumns({ ...pdfColumns, totalHrs: e.target.checked })} /> Total Hrs
-                      </label>
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.rate} onChange={e => setPdfColumns({ ...pdfColumns, rate: e.target.checked })} /> Total Rate
-                      </label>
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.amIn} onChange={e => setPdfColumns({ ...pdfColumns, amIn: e.target.checked })} /> AM In
-                      </label>
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.pmOut} onChange={e => setPdfColumns({ ...pdfColumns, pmOut: e.target.checked })} /> PM Out
-                      </label>
-                      <label className="checkbox-label">
-                        <input type="checkbox" checked={pdfColumns.earnings} onChange={e => setPdfColumns({ ...pdfColumns, earnings: e.target.checked })} /> Earnings
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="action-buttons" style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-primary dtr-action-btn" onClick={() => handleClockAction('am_in')} disabled={isAmInDisabled}>
+              <CheckCircle size={20} /> AM IN
+            </button>
+            <button className="btn btn-danger dtr-action-btn" onClick={() => handleClockAction('am_out')} disabled={isAmOutDisabled}>
+              <Clock size={20} /> AM OUT
+            </button>
+            <button className="btn btn-primary dtr-action-btn" onClick={() => handleClockAction('pm_in')} disabled={isPmInDisabled}>
+              <CheckCircle size={20} /> PM IN
+            </button>
+            <button className="btn btn-danger dtr-action-btn" onClick={() => handleClockAction('pm_out')} disabled={isPmOutDisabled}>
+              <Clock size={20} /> PM OUT
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* New Design: Details and Record */}
-      <div className="dtr-new-design-container">
-        <div className="premium-dtr-toolbar">
-
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="toolbar-group">
-              <div className="toolbar-label">
-                <ListFilter size={16} /> Filter By
+        {/* Admin Export Panel */}
+        {isAdmin && (
+          <div className="premium-admin-card" style={{ padding: showExportCenter ? '24px 30px' : '16px 30px' }}>
+            <div
+              className="admin-card-header"
+              style={{
+                borderBottom: showExportCenter ? '1px solid var(--glass-border)' : 'none',
+                marginBottom: showExportCenter ? '24px' : '0',
+                paddingBottom: showExportCenter ? '16px' : '0',
+                cursor: 'pointer'
+              }}
+              onClick={() => setShowExportCenter(!showExportCenter)}
+            >
+              <div className="admin-card-title">
+                <div style={{ padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '8px' }}>
+                  <Filter size={20} color="var(--primary)" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600, color: 'var(--text-main)', letterSpacing: '0.5px' }}>Attendance and Payroll Management</h3>
+                  {showExportCenter && <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>Generate specific reports and payroll records.</p>}
+                </div>
               </div>
-              <select
-                className="toolbar-input"
-                value={dtrFilterType}
-                onChange={handleFilterTypeChange}
-              >
-                <option value="month">Specific Month</option>
-                <option value="week">Specific Week</option>
-                <option value="day">Specific Day</option>
-              </select>
-            </div>
-
-            <div className="toolbar-group">
-              <div className="toolbar-label">
-                <CalendarDays size={16} /> Date
-              </div>
-              {dtrFilterType === 'week' ? (
-                <CustomWeekPicker
-                  value={dtrFilterValue}
-                  onChange={val => setDtrFilterValue(val)}
-                  className="toolbar-input"
-                />
-              ) : (
-                <input
-                  type={dtrFilterType === 'day' ? 'date' : 'month'}
-                  className="toolbar-input"
-                  value={dtrFilterValue}
-                  onChange={e => setDtrFilterValue(e.target.value)}
-                />
-              )}
-              <button
-                className="toolbar-today-btn"
-                onClick={handleGoToToday}
-                title="Go to Today"
-              >
-                Today
+              <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setShowExportCenter(!showExportCenter); }}>
+                <ChevronDown size={20} style={{ transform: showExportCenter ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s ease' }} />
               </button>
             </div>
 
-            {isAdmin && (
-              <>
-                <div className="toolbar-divider"></div>
-                <div className="toolbar-group">
-                  <div className="toolbar-label">
-                    <Users size={16} /> Employee
+            {showExportCenter && (
+              <div className="animate-fade-in">
+                <div className="admin-controls-surface" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '16px' }}>
+
+                  {/* Monthly Export Row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
+                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                      <label>Select Month</label>
+                      <input
+                        type="month"
+                        className="premium-input"
+                        value={exportMonth}
+                        onChange={e => setExportMonth(e.target.value)}
+                      />
+                    </div>
+                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                      <label>Employee</label>
+                      <MultiSelectDropdown
+                        options={employees}
+                        selected={monthlyExportUsers}
+                        onChange={setMonthlyExportUsers}
+                      />
+                    </div>
+                    <button className="btn btn-primary" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('monthly')}>
+                      <Download size={16} /> Monthly PDF Export
+                    </button>
                   </div>
-                  <select
-                    className="toolbar-input"
-                    style={{ minWidth: '180px' }}
-                    value={tableFilterUser}
-                    onChange={e => setTableFilterUser(e.target.value)}
-                  >
-                    <option value="all">All Employees</option>
-                    {employees.map(emp => (
-                      <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-                    ))}
-                  </select>
+
+                  {/* Weekly Export Row */}
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
+                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                      <label>Select Week</label>
+                      <CustomWeekPicker
+                        value={exportWeekStr}
+                        onChange={val => setExportWeekStr(val)}
+                      />
+                    </div>
+                    <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                      <label>Employee</label>
+                      <MultiSelectDropdown
+                        options={employees}
+                        selected={weeklyExportUsers}
+                        onChange={setWeeklyExportUsers}
+                      />
+                    </div>
+                    <button className="btn btn-primary" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('weekly')}>
+                      <Download size={16} /> Weekly PDF Export
+                    </button>
+                  </div>
+
+                  {/* Yearly Export Row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--glass-border)', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Annual Report</label>
+                      <p style={{ margin: '6px 0 0 0', fontSize: '0.9rem', color: 'var(--text-main)' }}>Generate a comprehensive report for the entire previous year automatically.</p>
+                    </div>
+                    <button className="btn btn-outline" style={{ padding: '10px 24px', flexShrink: 0 }} onClick={() => handlePresetExport('yearly')}>
+                      <Download size={16} /> Yearly PDF Export
+                    </button>
+                  </div>
                 </div>
-              </>
+
+                <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'center' }}>
+                  <button className="btn btn-ghost" onClick={() => setShowExportSettings(!showExportSettings)}>
+                    <Settings size={18} /> {showExportSettings ? 'Hide Advanced Settings' : 'Show Advanced Settings'}
+                  </button>
+                </div>
+
+                {showExportSettings && (
+                  <div className="advanced-settings-drawer">
+                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', flexWrap: 'wrap' }}>
+                      <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                        <label>Employee Target</label>
+                        <MultiSelectDropdown
+                          options={employees}
+                          selected={customExportUsers}
+                          onChange={setCustomExportUsers}
+                        />
+                      </div>
+                      <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                        <label>Custom Start Date</label>
+                        <input type="date" className="premium-input" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                      </div>
+                      <div className="premium-select-group" style={{ flex: 1, minWidth: '150px' }}>
+                        <label>Custom End Date</label>
+                        <input type="date" className="premium-input" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, minWidth: '200px' }}>
+                        <button className="btn btn-primary" style={{ width: '100%', padding: '10px 16px', fontSize: '0.95rem' }} onClick={() => exportPDF()}>
+                          <Download size={18} /> Export Custom PDF
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="export-settings" style={{ marginTop: 0, background: 'transparent', padding: 0, border: 'none' }}>
+                      <h4 style={{ color: 'var(--text-main)', marginBottom: '16px' }}>Include Columns:</h4>
+                      <div className="checkbox-grid">
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.name} onChange={e => setPdfColumns({ ...pdfColumns, name: e.target.checked })} /> Name
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.totalHrs} onChange={e => setPdfColumns({ ...pdfColumns, totalHrs: e.target.checked })} /> Total Hrs
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.rate} onChange={e => setPdfColumns({ ...pdfColumns, rate: e.target.checked })} /> Rate
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.amIn} onChange={e => setPdfColumns({ ...pdfColumns, amIn: e.target.checked })} /> AM In
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.amOut} onChange={e => setPdfColumns({ ...pdfColumns, amOut: e.target.checked })} /> AM Out
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.pmIn} onChange={e => setPdfColumns({ ...pdfColumns, pmIn: e.target.checked })} /> PM In
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.pmOut} onChange={e => setPdfColumns({ ...pdfColumns, pmOut: e.target.checked })} /> PM Out
+                        </label>
+                        <label className="checkbox-label">
+                          <input type="checkbox" checked={pdfColumns.earnings} onChange={e => setPdfColumns({ ...pdfColumns, earnings: e.target.checked })} /> Total Pay
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* New Design: Details and Record */}
+        <div className="dtr-new-design-container">
+          <div className="premium-dtr-toolbar">
+
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div className="toolbar-group">
+                <div className="toolbar-label">
+                  <ListFilter size={16} /> Filter By
+                </div>
+                <select
+                  className="toolbar-input"
+                  value={dtrFilterType}
+                  onChange={handleFilterTypeChange}
+                >
+                  <option value="month">Specific Month</option>
+                  <option value="week">Specific Week</option>
+                  <option value="day">Specific Day</option>
+                </select>
+              </div>
+
+              <div className="toolbar-group">
+                <div className="toolbar-label">
+                  <CalendarDays size={16} /> Date
+                </div>
+                {dtrFilterType === 'week' ? (
+                  <CustomWeekPicker
+                    value={dtrFilterValue}
+                    onChange={val => setDtrFilterValue(val)}
+                    className="toolbar-input"
+                  />
+                ) : (
+                  <input
+                    type={dtrFilterType === 'day' ? 'date' : 'month'}
+                    className="toolbar-input"
+                    value={dtrFilterValue}
+                    onChange={e => setDtrFilterValue(e.target.value)}
+                  />
+                )}
+                <button
+                  className="toolbar-today-btn"
+                  onClick={handleGoToToday}
+                  title="Go to Today"
+                >
+                  Today
+                </button>
+              </div>
+
+              {isAdmin && (
+                <>
+                  <div className="toolbar-divider"></div>
+                  <div className="toolbar-group">
+                    <div className="toolbar-label">
+                      <Users size={16} /> Employee
+                    </div>
+                    <select
+                      className="toolbar-input"
+                      style={{ minWidth: '180px' }}
+                      value={tableFilterUser}
+                      onChange={e => setTableFilterUser(e.target.value)}
+                    >
+                      <option value="all">All Employees</option>
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {!isAdmin && (
+              <div style={{ marginLeft: 'auto' }}>
+                <button className="btn btn-outline-primary" onClick={handleEmployeePdfExport} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', padding: '6px 12px', background: 'transparent', color: 'var(--primary)', border: '1px solid var(--primary)', borderRadius: '6px', cursor: 'pointer' }}>
+                  <Download size={16} /> Download PDF
+                </button>
+              </div>
             )}
           </div>
 
-        </div>
-
-        {displayUser ? (
-          <>
-            <div className="dtr-content-layout">
-              <div className="dtr-sidebar">
-                <div className="daily-attendance-summary">
-                  <div className="summary-row">
-                    <span className="summary-label">Work:</span>
-                    <span className="summary-text">
-                      {displayActiveShift ? (
-                        <ActiveTimer activeShift={displayActiveShift} />
-                      ) : displayTodayRecord?.pm_out ? (
-                        <span style={{ fontWeight: 600, color: 'var(--success)' }}>
-                          Shift Ended ({displayTodayRecord.total_hours ? formatHoursDuration(displayTodayRecord.total_hours) : ''})
-                        </span>
-                      ) : (
-                        '---'
-                      )}
-                    </span>
-                  </div>
-                  <div className="summary-row">
-                    <span className="summary-label">Start Time:</span>
-                    <span className="summary-value">
-                      {displayTodayRecord?.am_in ? formatTime(displayTodayRecord.am_in, displayTodayRecord.date) : '--:--'}
-                    </span>
-                  </div>
-                  <div className="summary-row">
-                    <span className="summary-label">End Time:</span>
-                    <span className="summary-value">
-                      {displayTodayRecord?.pm_out ? formatTime(displayTodayRecord.pm_out, displayTodayRecord.date) : '--:--'}
-                    </span>
-                  </div>
-                  <div className="summary-row">
-                    <span className="summary-label">Date: </span>
-                    <span className="summary-value">{new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}</span>
-                  </div>
-                  <div className="summary-row">
-                    <span className="summary-label">Status:</span>
-                    <span className={`summary-value ${(() => {
-                      if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return 'status-present';
-
-                      const targetId = displayUser ? displayUser.id : user.id;
-                      const todayEvents = events.filter(e => e.event_date === todayDateStr && (e.user_id == targetId || e.user_id == 0));
-                      const approvedHoliday = todayEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'));
-                      const approvedLeave = todayEvents.find(e => e.status === 'approved' && e.event_type === 'VL');
-
-                      if (approvedHoliday || approvedLeave) return 'status-present'; // Just to not show red
-                      return 'status-absent';
-                    })()}`}>
-                      {(() => {
-                        if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return displayTodayRecord.status.toLowerCase();
+          {displayUser ? (
+            <>
+              <div className="dtr-content-layout">
+                <div className="dtr-sidebar">
+                  <div className="daily-attendance-summary">
+                    <div className="summary-row">
+                      <span className="summary-label">Work:</span>
+                      <span className="summary-text">
+                        {displayActiveShift ? (
+                          <ActiveTimer activeShift={displayActiveShift} />
+                        ) : displayTodayRecord?.pm_out ? (
+                          <span style={{ fontWeight: 600, color: 'var(--success)' }}>
+                            Shift Ended ({displayTodayRecord.total_hours ? formatHoursDuration(displayTodayRecord.total_hours) : ''})
+                          </span>
+                        ) : (
+                          '---'
+                        )}
+                      </span>
+                    </div>
+                    <div className="summary-row">
+                      <span className="summary-label">AM Shift:</span>
+                      <span className="summary-value" style={{ fontSize: '0.85rem' }}>
+                        {displayTodayRecord?.am_in ? formatTime(displayTodayRecord.am_in, displayTodayRecord.date) : '--:--'} - {displayTodayRecord?.am_out ? formatTime(displayTodayRecord.am_out, displayTodayRecord.date) : '--:--'}
+                      </span>
+                    </div>
+                    <div className="summary-row">
+                      <span className="summary-label">PM Shift:</span>
+                      <span className="summary-value" style={{ fontSize: '0.85rem' }}>
+                        {displayTodayRecord?.pm_in ? formatTime(displayTodayRecord.pm_in, displayTodayRecord.date) : '--:--'} - {displayTodayRecord?.pm_out ? formatTime(displayTodayRecord.pm_out, displayTodayRecord.date) : '--:--'}
+                      </span>
+                    </div>
+                    <div className="summary-row">
+                      <span className="summary-label">Date: </span>
+                      <span className="summary-value">{new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}</span>
+                    </div>
+                    <div className="summary-row">
+                      <span className="summary-label">Status:</span>
+                      <span className={`summary-value ${(() => {
+                        if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return 'status-present';
 
                         const targetId = displayUser ? displayUser.id : user.id;
                         const todayEvents = events.filter(e => e.event_date === todayDateStr && (e.user_id == targetId || e.user_id == 0));
                         const approvedHoliday = todayEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'));
                         const approvedLeave = todayEvents.find(e => e.status === 'approved' && e.event_type === 'VL');
 
-                        if (approvedHoliday) return 'holiday';
-                        if (approvedLeave) return 'approved leave';
-                        return 'absent';
-                      })()}
-                    </span>
+                        if (approvedHoliday || approvedLeave) return 'status-present'; // Just to not show red
+                        return 'status-absent';
+                      })()}`}>
+                        {(() => {
+                          if (displayTodayRecord && displayTodayRecord.status !== 'Absent') return displayTodayRecord.status.toLowerCase();
+
+                          const targetId = displayUser ? displayUser.id : user.id;
+                          const todayEvents = events.filter(e => e.event_date === todayDateStr && (e.user_id == targetId || e.user_id == 0));
+                          const approvedHoliday = todayEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'));
+                          const approvedLeave = todayEvents.find(e => e.status === 'approved' && e.event_type === 'VL');
+
+                          if (approvedHoliday) return 'holiday';
+                          if (approvedLeave) return 'approved leave';
+                          return 'absent';
+                        })()}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="dtr-main-panel">
-                <div className="premium-employee-card">
-                  <div className="employee-card-header">
-                    <div className="employee-card-profile">
-                      <div className="employee-info-main">
-                        <h2 className="employee-name">{displayUser.full_name || 'N/A'}</h2>
-                        <span className="employee-role">{displayUser.email || 'N/A'}</span>
+                <div className="dtr-main-panel">
+                  <div className="premium-employee-card">
+                    <div className="employee-card-header">
+                      <div className="employee-card-profile">
+                        <div className="employee-info-main">
+                          <h2 className="employee-name">{displayUser.full_name || 'N/A'}</h2>
+                          <span className="employee-role">{displayUser.email || 'N/A'}</span>
+                        </div>
+                      </div>
+                      <div className="employee-id-badge">
+                        Employee ID: {(displayUser.employee_id || displayUser.id) ? String(displayUser.employee_id || displayUser.id).padStart(3, '0') : 'N/A'}
                       </div>
                     </div>
-                    <div className="employee-id-badge">
-                      Employee ID: {(displayUser.employee_id || displayUser.id) ? String(displayUser.employee_id || displayUser.id).padStart(3, '0') : 'N/A'}
-                    </div>
-                  </div>
 
-                  <div className="employee-card-divider"></div>
+                    <div className="employee-card-divider"></div>
 
-                  <div className="employee-card-body">
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Month</span>
-                      <span className="stat-value">{new Date().toLocaleString('en-US', { month: 'short' })}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Day</span>
-                      <span className="stat-value">{new Date().toLocaleString('en-US', { day: 'numeric' })}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Year</span>
-                      <span className="stat-value">{new Date().toLocaleString('en-US', { year: 'numeric' })}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Sex</span>
-                      <span className="stat-value">{displayUser.sex || 'N/A'}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Department</span>
-                      <span className="stat-value">{displayUser.department || 'N/A'}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Position</span>
-                      <span className="stat-value" style={{ textTransform: 'capitalize' }}>{displayUser.position || displayUser.role || 'N/A'}</span>
-                    </div>
-                    <div className="employee-stat-group">
-                      <span className="stat-label">Employment Status</span>
-                      <span className="stat-value status-active">Active</span>
-                    </div>
-                    {isAdmin && (
+                    <div className="employee-card-body">
                       <div className="employee-stat-group">
-                        <span className="stat-label">Rate/Hr</span>
-                        <span className="stat-value" style={{ color: 'var(--success)' }}>${displayUser.hourly_rate || '0.00'}</span>
+                        <span className="stat-label">Month</span>
+                        <span className="stat-value">{new Date().toLocaleString('en-US', { month: 'short' })}</span>
                       </div>
-                    )}
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Day</span>
+                        <span className="stat-value">{new Date().toLocaleString('en-US', { day: 'numeric' })}</span>
+                      </div>
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Year</span>
+                        <span className="stat-value">{new Date().toLocaleString('en-US', { year: 'numeric' })}</span>
+                      </div>
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Sex</span>
+                        <span className="stat-value">{displayUser.sex || 'N/A'}</span>
+                      </div>
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Department</span>
+                        <span className="stat-value">{displayUser.department || 'N/A'}</span>
+                      </div>
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Position</span>
+                        <span className="stat-value" style={{ textTransform: 'capitalize' }}>{displayUser.position || displayUser.role || 'N/A'}</span>
+                      </div>
+                      <div className="employee-stat-group">
+                        <span className="stat-label">Employment Status</span>
+                        <span className="stat-value status-active">Active</span>
+                      </div>
+                      {isAdmin && (
+                        <div className="employee-stat-group">
+                          <span className="stat-label">Rate/Hr</span>
+                          <span className="stat-value" style={{ color: 'var(--success)' }}>${displayUser.hourly_rate || '0.00'}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="dtr-table-section" style={{ marginTop: '24px' }}>
-              <div className="dtr-table-title">ATTENDANCE RECORD</div>
+              <div className="dtr-table-section" style={{ marginTop: '24px' }}>
+                <div className="dtr-table-title">
+                  <span>ATTENDANCE RECORD</span>
+                </div>
+                <div className="table-responsive">
+                  <table className="dtr-monthly-table">
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} style={{ width: '60px' }}>DAY</th>
+                        <th colSpan={2} style={{ minWidth: '160px', width: '200px', textAlign: 'center' }}>AM</th>
+                        <th colSpan={2} style={{ minWidth: '160px', width: '200px', textAlign: 'center' }}>PM</th>
+                        <th rowSpan={2} style={{ width: '100px' }}>TOTAL HRS</th>
+                        {isAdmin && <th rowSpan={2} style={{ width: '100px' }}>RATE/HR</th>}
+                        {isAdmin && <th rowSpan={2} style={{ width: '120px' }}>EARNINGS</th>}
+                        <th rowSpan={2} style={{ width: '120px' }}>STATUS</th>
+                        {isAdmin && <th rowSpan={2} style={{ width: '100px', textAlign: 'center' }}>ACTIONS</th>}
+                      </tr>
+                      <tr>
+                        <th style={{ minWidth: '80px', width: '100px', textAlign: 'center' }}>IN</th>
+                        <th style={{ minWidth: '80px', width: '100px', textAlign: 'center' }}>OUT</th>
+                        <th style={{ minWidth: '80px', width: '100px', textAlign: 'center' }}>IN</th>
+                        <th style={{ minWidth: '80px', width: '100px', textAlign: 'center' }}>OUT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        let grandTotalHrs = 0;
+                        let grandTotalEarnings = 0;
+
+                        return (
+                          <>
+                            {filteredDays.map(dayObj => {
+                              const dailyRecords = tableRecords.filter(r => r.date === dayObj.dateStr);
+                              const row = dailyRecords[0];
+                              const targetUserId = displayUser.id;
+
+                              // Check if this date is covered by an approved leave request.
+                              // Only apply virtual leave status when there is NO actual DTR row for this day,
+                              // so that admin edits (which create/update a row) always take precedence.
+                              const approvedLeaveForDay = leaveRequests.find(lr =>
+                                String(lr.user_id) === String(targetUserId) &&
+                                dayObj.dateStr >= lr.start_date &&
+                                dayObj.dateStr <= lr.end_date
+                              );
+
+                              let virtualStatus = '';
+                              if (!row) {
+                                // If covered by an approved leave request and no DTR row exists, show LEAVE
+                                if (approvedLeaveForDay) {
+                                  virtualStatus = 'LEAVE';
+                                } else {
+                                  const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
+                                  const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
+                                  const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
+
+                                  // Prioritize holiday over leave for display if both exist, or just use the first approved
+                                  const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'))
+                                    || dailyEvents.find(e => e.status === 'approved');
+
+                                  if (approved) {
+                                    if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
+                                    else if (approved.event_type === 'HL' || approved.event_type === 'Holiday') virtualStatus = 'HOLIDAY';
+                                    else virtualStatus = 'SCHEDULED';
+                                  } else if (pendingReschedule) {
+                                    virtualStatus = 'PENDING RESCHEDULE';
+                                  } else if (pendingNew) {
+                                    virtualStatus = 'PENDING SCHEDULE';
+                                  }
+                                }
+                              }
+                              // If a real DTR row exists, it always wins — never overlay leave/event virtualStatus on top of it.
+
+                              const hrs = row ? parseFloat(row.total_hours) || 0 : 0;
+                              const rate = row ? (parseFloat(row.hourly_rate) || parseFloat(displayUser.hourly_rate) || 0) : 0;
+                              const earnings = hrs * rate;
+
+                              grandTotalHrs += hrs;
+                              grandTotalEarnings += earnings;
+
+                              const isSpecialStatus = (row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status)) || (!row && virtualStatus === 'LEAVE');
+                              const displayStatus = row && row.status ? row.status.toUpperCase() : virtualStatus;
+
+                              let statusColor = 'inherit';
+                              if (row?.status === 'Absent') statusColor = 'var(--danger)';
+                              else if (row?.status === 'Rescheduled') statusColor = 'var(--warning, #f59e0b)';
+                              else if (isSpecialStatus) statusColor = 'var(--primary)';
+                              else if (virtualStatus === 'LEAVE') statusColor = 'var(--primary)';
+                              else if (virtualStatus) statusColor = 'var(--text-muted)';
+
+                              return (
+                                <tr key={dayObj.dateStr}>
+                                  <td className="dtr-day-col">{dayObj.dayNum}</td>
+                                  <td style={{ color: 'var(--text-main)', fontWeight: 600, textAlign: 'center' }}>
+                                    {isSpecialStatus ? '---' : (row && row.am_in ? formatTime(row.am_in, row.date) : '')}
+                                  </td>
+                                  <td style={{ color: 'var(--text-main)', fontWeight: 600, textAlign: 'center' }}>
+                                    {isSpecialStatus ? '---' : (row && row.am_out ? formatTime(row.am_out, row.date) : '')}
+                                  </td>
+                                  <td style={{ color: 'var(--text-main)', fontWeight: 600, textAlign: 'center' }}>
+                                    {isSpecialStatus ? '---' : (row && row.pm_in ? formatTime(row.pm_in, row.date) : '')}
+                                  </td>
+                                  <td style={{ color: 'var(--text-main)', fontWeight: 600, textAlign: 'center' }}>
+                                    {isSpecialStatus ? '---' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '')}
+                                  </td>
+                                  <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                                    {isSpecialStatus ? '---' : (hrs ? formatHoursDuration(hrs) : '')}
+                                  </td>
+                                  {isAdmin && <td>{rate ? `$${rate.toFixed(2)}` : ''}</td>}
+                                  {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings && !isSpecialStatus ? `$${earnings.toFixed(2)}` : ''}</td>}
+                                  <td style={{ fontWeight: 600, color: statusColor }}>
+                                    {displayStatus}
+                                  </td>
+                                  {isAdmin && (
+                                    <td style={{ textAlign: 'center' }}>
+                                      <div className="dtr-action-icons" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                        {row ? (
+                                          <>
+                                            <button className="btn-icon text-primary" onClick={() => openEditModal(row, dayObj, targetUserId)} title="Edit Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}>
+                                              <Edit size={16} />
+                                            </button>
+                                            <button className="btn-icon text-danger" onClick={() => handleDeleteRecord(row.id)} title="Delete Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}>
+                                              <Trash2 size={16} />
+                                            </button>
+                                          </>
+                                        ) : (
+                                          <button onClick={() => openEditModal(null, dayObj, targetUserId)} title="Add Record" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', cursor: 'pointer', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
+                                            <Plus size={14} /> Add
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                            <tr className="grand-total-row">
+                              <td colSpan={5} style={{ textAlign: 'right', paddingRight: '24px', fontWeight: 800 }}>GRAND TOTAL</td>
+                              <td style={{ color: 'var(--primary)', fontWeight: 800 }}>{grandTotalHrs > 0 ? formatHoursDuration(grandTotalHrs) : ''}</td>
+                              {isAdmin && <td></td>}
+                              {isAdmin && <td style={{ color: 'var(--success)', fontWeight: 800 }}>{grandTotalEarnings > 0 ? `$${grandTotalEarnings.toFixed(2)}` : ''}</td>}
+                              <td></td>
+                              {isAdmin && <td></td>}
+                            </tr>
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="dtr-table-section">
+              <div className="dtr-table-title">ALL EMPLOYEES SUMMARY</div>
               <div className="table-responsive">
-                <table className="dtr-monthly-table">
+                <table className="dtr-monthly-table summary-table">
                   <thead>
                     <tr>
-                      <th rowSpan={2} style={{ width: '60px' }}>DAY</th>
-                      <th style={{ minWidth: '100px', width: '120px' }}>AM</th>
-                      <th style={{ minWidth: '100px', width: '120px' }}>PM</th>
-                      <th rowSpan={2} style={{ width: '100px' }}>TOTAL HRS</th>
-                      {isAdmin && <th rowSpan={2} style={{ width: '100px' }}>RATE/HR</th>}
-                      {isAdmin && <th rowSpan={2} style={{ width: '120px' }}>EARNINGS</th>}
-                      <th rowSpan={2} style={{ width: '120px' }}>STATUS</th>
-                      {isAdmin && <th rowSpan={2} style={{ width: '100px', textAlign: 'center' }}>ACTIONS</th>}
-                    </tr>
-                    <tr>
-                      <th style={{ minWidth: '100px', width: '120px' }}>IN</th>
-                      <th style={{ minWidth: '100px', width: '120px' }}>OUT</th>
+                      <th>ID</th>
+                      <th>EMPLOYEE NAME</th>
+                      <th>POSITION</th>
+                      <th>DAYS PRESENT</th>
+                      <th>TOTAL HOURS</th>
+                      <th>EARNINGS</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(() => {
-                      let grandTotalHrs = 0;
-                      let grandTotalEarnings = 0;
-
-                      return (
-                        <>
-                          {filteredDays.map(dayObj => {
-                            const dailyRecords = tableRecords.filter(r => r.date === dayObj.dateStr);
-                            const row = dailyRecords[0];
-                            const targetUserId = displayUser.id;
-
-                            // Check if this date is covered by an approved leave request.
-                            // Only apply virtual leave status when there is NO actual DTR row for this day,
-                            // so that admin edits (which create/update a row) always take precedence.
-                            const approvedLeaveForDay = leaveRequests.find(lr =>
-                              String(lr.user_id) === String(targetUserId) &&
-                              dayObj.dateStr >= lr.start_date &&
-                              dayObj.dateStr <= lr.end_date
-                            );
-
-                            let virtualStatus = '';
-                            if (!row) {
-                              // If covered by an approved leave request and no DTR row exists, show VACATION LEAVE
-                              if (approvedLeaveForDay) {
-                                virtualStatus = 'VACATION LEAVE';
-                              } else {
-                                const dailyEvents = events.filter(e => e.event_date === dayObj.dateStr && (e.user_id == targetUserId || e.user_id == 0));
-                                const pendingReschedule = dailyEvents.find(e => e.status === 'pending' && e.reschedule_for_event_id);
-                                const pendingNew = dailyEvents.find(e => e.status === 'pending' && !e.reschedule_for_event_id);
-
-                                // Prioritize holiday over leave for display if both exist, or just use the first approved
-                                const approved = dailyEvents.find(e => e.status === 'approved' && (e.event_type === 'Holiday' || e.event_type === 'HL'))
-                                  || dailyEvents.find(e => e.status === 'approved');
-
-                                if (approved) {
-                                  if (approved.event_type === 'VL') virtualStatus = 'APPROVED LEAVE';
-                                  else if (approved.event_type === 'HL' || approved.event_type === 'Holiday') virtualStatus = 'HOLIDAY';
-                                  else virtualStatus = 'SCHEDULED';
-                                } else if (pendingReschedule) {
-                                  virtualStatus = 'PENDING RESCHEDULE';
-                                } else if (pendingNew) {
-                                  virtualStatus = 'PENDING SCHEDULE';
-                                }
-                              }
-                            }
-                            // If a real DTR row exists, it always wins — never overlay leave/event virtualStatus on top of it.
-
-                            const hrs = row ? parseFloat(row.total_hours) || 0 : 0;
-                            const rate = row ? (parseFloat(row.hourly_rate) || parseFloat(displayUser.hourly_rate) || 0) : 0;
-                            const earnings = hrs * rate;
-
-                            grandTotalHrs += hrs;
-                            grandTotalEarnings += earnings;
-
-                            const isSpecialStatus = (row && ['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(row.status)) || (!row && virtualStatus === 'VACATION LEAVE');
-                            const displayStatus = row && row.status ? row.status.toUpperCase() : virtualStatus;
-
-                            let statusColor = 'inherit';
-                            if (row?.status === 'Absent') statusColor = 'var(--danger)';
-                            else if (row?.status === 'Rescheduled') statusColor = 'var(--warning, #f59e0b)';
-                            else if (isSpecialStatus) statusColor = 'var(--primary)';
-                            else if (virtualStatus === 'VACATION LEAVE') statusColor = 'var(--primary)';
-                            else if (virtualStatus) statusColor = 'var(--text-muted)';
-
-                            return (
-                              <tr key={dayObj.dateStr}>
-                                <td className="dtr-day-col">{dayObj.dayNum}</td>
-                                <td style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                                  {isSpecialStatus ? '---' : (row && row.am_in ? formatTime(row.am_in, row.date) : '')}
-                                </td>
-                                <td style={{ color: 'var(--text-main)', fontWeight: 600 }}>
-                                  {isSpecialStatus ? '---' : (row && row.pm_out ? formatTime(row.pm_out, row.date) : '')}
-                                </td>
-                                <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                                  {isSpecialStatus ? '---' : (hrs ? formatHoursDuration(hrs) : '')}
-                                </td>
-                                {isAdmin && <td>{rate ? `$${rate.toFixed(2)}` : ''}</td>}
-                                {isAdmin && <td style={{ fontWeight: 600, color: 'var(--success)' }}>{earnings && !isSpecialStatus ? `$${earnings.toFixed(2)}` : ''}</td>}
-                                <td style={{ fontWeight: 600, color: statusColor }}>
-                                  {displayStatus}
-                                </td>
-                                {isAdmin && (
-                                  <td style={{ textAlign: 'center' }}>
-                                    <div className="dtr-action-icons" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                      {row ? (
-                                        <>
-                                          <button className="btn-icon text-primary" onClick={() => openEditModal(row, dayObj, targetUserId)} title="Edit Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}>
-                                            <Edit size={16} />
-                                          </button>
-                                          <button className="btn-icon text-danger" onClick={() => handleDeleteRecord(row.id)} title="Delete Record" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}>
-                                            <Trash2 size={16} />
-                                          </button>
-                                        </>
-                                      ) : (
-                                        <button onClick={() => openEditModal(null, dayObj, targetUserId)} title="Add Record" style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.2)', cursor: 'pointer', color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600 }}>
-                                          <Plus size={14} /> Add
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                          <tr className="grand-total-row">
-                            <td colSpan={3} style={{ textAlign: 'right', paddingRight: '24px', fontWeight: 800 }}>GRAND TOTAL</td>
-                            <td style={{ color: 'var(--primary)', fontWeight: 800 }}>{grandTotalHrs > 0 ? formatHoursDuration(grandTotalHrs) : ''}</td>
-                            {isAdmin && <td></td>}
-                            {isAdmin && <td style={{ color: 'var(--success)', fontWeight: 800 }}>{grandTotalEarnings > 0 ? `$${grandTotalEarnings.toFixed(2)}` : ''}</td>}
-                            <td></td>
-                            {isAdmin && <td></td>}
-                          </tr>
-                        </>
-                      );
-                    })()}
+                    {allEmployeesSummary.length > 0 ? (
+                      allEmployeesSummary.map(emp => (
+                        <tr
+                          key={emp.id}
+                          className="clickable-row"
+                          onClick={() => setTableFilterUser(String(emp.id))}
+                        >
+                          <td style={{ fontWeight: 600 }}>{emp.employee_id || emp.id}</td>
+                          <td style={{ textAlign: 'left', paddingLeft: '16px', fontWeight: 600, color: 'var(--primary)' }}>{emp.full_name}</td>
+                          <td>{emp.position || emp.role || '--'}</td>
+                          <td>{emp.daysPresent} days</td>
+                          <td>{emp.totalHours.toFixed(2)} hrs</td>
+                          <td style={{ fontWeight: 600, color: 'var(--success)' }}>${emp.totalEarnings.toFixed(2)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} style={{ padding: '30px', color: 'var(--text-muted)' }}>
+                          No records found for this timeframe.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
-          </>
-        ) : (
-          <div className="dtr-table-section">
-            <div className="dtr-table-title">ALL EMPLOYEES SUMMARY</div>
-            <div className="table-responsive">
-              <table className="dtr-monthly-table summary-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>EMPLOYEE NAME</th>
-                    <th>POSITION</th>
-                    <th>DAYS PRESENT</th>
-                    <th>TOTAL HOURS</th>
-                    <th>EARNINGS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allEmployeesSummary.length > 0 ? (
-                    allEmployeesSummary.map(emp => (
-                      <tr
-                        key={emp.id}
-                        className="clickable-row"
-                        onClick={() => setTableFilterUser(String(emp.id))}
-                      >
-                        <td style={{ fontWeight: 600 }}>{emp.employee_id || emp.id}</td>
-                        <td style={{ textAlign: 'left', paddingLeft: '16px', fontWeight: 600, color: 'var(--primary)' }}>{emp.full_name}</td>
-                        <td>{emp.position || emp.role || '--'}</td>
-                        <td>{emp.daysPresent} days</td>
-                        <td>{emp.totalHours.toFixed(2)} hrs</td>
-                        <td style={{ fontWeight: 600, color: 'var(--success)' }}>${emp.totalEarnings.toFixed(2)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={6} style={{ padding: '30px', color: 'var(--text-muted)' }}>
-                        No records found for this timeframe.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+          )}
+        </div>
+
+        {/* Admin Edit/Add Modal */}
+        {editModal.isOpen && (
+          <div className="dtr-modal-overlay">
+            <div className="dtr-modal-content">
+              <div className="dtr-modal-header">
+                <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-main)' }}>
+                  {editModal.mode === 'edit' ? 'Edit Record' : 'Add Record'} - {editModal.dateStr}
+                </h3>
+                <button className="btn-icon" onClick={() => setEditModal({ ...editModal, isOpen: false })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  <X size={24} />
+                </button>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); handleSaveModal(); }}>
+                <div className="dtr-modal-body" style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="premium-select-group">
+                    <label>Status</label>
+                    <select className="premium-input" value={editModal.status} onChange={(e) => setEditModal({ ...editModal, status: e.target.value })}>
+                      <option value="Present">Present</option>
+                      <option value="Absent">Absent</option>
+                      <option value="Leave">Leave</option>
+                      <option value="Holiday">Holiday</option>
+                      <option value="Rescheduled">Rescheduled</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div className="premium-select-group" style={{ flex: 1 }}>
+                      <label>AM IN Time</label>
+                      <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                    </div>
+                    <div className="premium-select-group" style={{ flex: 1 }}>
+                      <label>AM OUT Time</label>
+                      <input type="time" step="1" className="premium-input" value={editModal.amOut} onChange={(e) => setEditModal({ ...editModal, amOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '16px' }}>
+                    <div className="premium-select-group" style={{ flex: 1 }}>
+                      <label>PM IN Time</label>
+                      <input type="time" step="1" className="premium-input" value={editModal.pmIn} onChange={(e) => setEditModal({ ...editModal, pmIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                    </div>
+                    <div className="premium-select-group" style={{ flex: 1 }}>
+                      <label>PM OUT Time</label>
+                      <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                    </div>
+                  </div>
+                </div>
+                <div className="dtr-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
+                  <button type="button" className="btn btn-outline" onClick={() => setEditModal({ ...editModal, isOpen: false })}>Cancel</button>
+                  <button type="submit" className="btn btn-primary">Save Record</button>
+                </div>
+              </form>
             </div>
           </div>
         )}
       </div>
-
-      {/* Admin Edit/Add Modal */}
-      {editModal.isOpen && (
-        <div className="dtr-modal-overlay">
-          <div className="dtr-modal-content">
-            <div className="dtr-modal-header">
-              <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-main)' }}>
-                {editModal.mode === 'edit' ? 'Edit Record' : 'Add Record'} - {editModal.dateStr}
-              </h3>
-              <button className="btn-icon" onClick={() => setEditModal({ ...editModal, isOpen: false })} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
-                <X size={24} />
-              </button>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); handleSaveModal(); }}>
-              <div className="dtr-modal-body" style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="premium-select-group">
-                  <label>Status</label>
-                  <select className="premium-input" value={editModal.status} onChange={(e) => setEditModal({ ...editModal, status: e.target.value })}>
-                    <option value="Present">Present</option>
-                    <option value="Absent">Absent</option>
-                    <option value="Leave">Leave</option>
-                    <option value="Holiday">Holiday</option>
-                    <option value="Rescheduled">Rescheduled</option>
-                  </select>
-                </div>
-                <div className="premium-select-group">
-                  <label>AM IN Time</label>
-                  <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
-                </div>
-                <div className="premium-select-group">
-                  <label>PM OUT Time</label>
-                  <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
-                </div>
-              </div>
-              <div className="dtr-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setEditModal({ ...editModal, isOpen: false })}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Save Record</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
 };
 
-export default DtrPage;
+export default DtrPage
