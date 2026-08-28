@@ -8,6 +8,7 @@ import { useNotification } from '../../context/NotificationContext';
 import './CalendarPage.css';
 import API_BASE from '../../config/api';
 import CustomWeekPicker from '../../components/common/CustomWeekPicker';
+import { logSystemAction } from '../../utils/logger';
 
 const EVENT_TYPES = ['WS', 'VL', 'HL'];
 
@@ -274,7 +275,7 @@ const CalendarPage = () => {
       setLoading(true);
       try {
         if (editingEventId) {
-          await axios.put(`${API_BASE}/calendar.php`, {
+          const res = await axios.put(`${API_BASE}/calendar.php`, {
             id: editingEventId,
             action: 'edit',
             user_id: targetUserId,
@@ -286,9 +287,10 @@ const CalendarPage = () => {
             status: 'approved',
             is_admin: true
           });
+          if (res.data.status !== 'success') throw new Error(res.data.message);
           addNotification({ type: 'success', message: 'Event updated successfully.' });
         } else {
-          await axios.post(`${API_BASE}/calendar.php`, {
+          const res = await axios.post(`${API_BASE}/calendar.php`, {
             user_id: isAdmin ? targetUserId : user.id,
             title: computedTitle,
             description,
@@ -297,6 +299,7 @@ const CalendarPage = () => {
             schedule_option: scheduleOption,
             status: isAdmin ? 'approved' : 'pending'
           });
+          if (res.data.status !== 'success') throw new Error(res.data.message);
           addNotification({ type: 'success', message: isAdmin ? 'Event assigned successfully.' : 'Event requested successfully.' });
         }
         setTitle('');
@@ -311,7 +314,7 @@ const CalendarPage = () => {
         fetchEvents();
       } catch (err) {
         console.error(err);
-        addNotification({ type: 'error', message: editingEventId ? 'Failed to update event.' : 'Failed to save event.' });
+        addNotification({ type: 'error', message: err.message || (editingEventId ? 'Failed to update event.' : 'Failed to save event.') });
       }
       setLoading(false);
     } else {
@@ -329,7 +332,7 @@ const CalendarPage = () => {
       let createdCount = 0;
       for (const dateStr of adminSelectedDates) {
         try {
-          await axios.post(`${API_BASE}/calendar.php`, {
+          const res = await axios.post(`${API_BASE}/calendar.php`, {
             user_id: isAdmin ? targetUserId : user.id,
             title: computedTitle,
             description,
@@ -338,9 +341,14 @@ const CalendarPage = () => {
             schedule_option: scheduleOption,
             status: isAdmin ? 'approved' : 'pending'
           });
-          createdCount++;
+          if (res.data.status === 'success') {
+            createdCount++;
+          } else {
+            addNotification({ type: 'error', message: `Date ${dateStr}: ${res.data.message}` });
+          }
         } catch (err) {
           console.error('Failed to create event for', dateStr, err);
+          addNotification({ type: 'error', message: `Failed for ${dateStr}.` });
         }
       }
       setLoading(false);
@@ -370,8 +378,15 @@ const CalendarPage = () => {
     let datesToSubmit = [];
 
     if (scheduleDateMode === 'range') {
-      if (!scheduleStartDate || !scheduleEndDate) return;
-      if (scheduleStartDate < todayStr) {
+      if (!scheduleStartDate || !scheduleEndDate) {
+        addNotification({ type: 'warning', message: 'Please select both start and end dates.' });
+        return;
+      }
+      if (scheduleStartDate > scheduleEndDate) {
+        addNotification({ type: 'warning', message: 'Start date cannot be after end date.' });
+        return;
+      }
+      if (scheduleStartDate < todayStr || scheduleEndDate < todayStr) {
         addNotification({ type: 'warning', message: 'Cannot request a schedule in outdated date.' });
         return;
       }
@@ -408,7 +423,7 @@ const CalendarPage = () => {
 
     for (const dateStr of datesToSubmit) {
       try {
-        await axios.post(`${API_BASE}/calendar.php`, {
+        const res = await axios.post(`${API_BASE}/calendar.php`, {
           user_id: user.id,
           title: scheduleType === 'WS' ? 'Work Shift' : 'Leave',
           description: description || (scheduleType === 'WS' ? 'Requested working schedule' : 'Requested leave'),
@@ -417,9 +432,14 @@ const CalendarPage = () => {
           schedule_option: scheduleOption,
           status: 'pending'
         });
-        createdCount++;
+        if (res.data.status === 'success') {
+          createdCount++;
+        } else {
+          addNotification({ type: 'error', message: `Date ${dateStr}: ${res.data.message}` });
+        }
       } catch (err) {
         console.error('Failed to create schedule for', dateStr, err);
+        addNotification({ type: 'error', message: `Failed for ${dateStr}.` });
       }
     }
 
@@ -892,11 +912,6 @@ const CalendarPage = () => {
                             }
                           } else if (evt && (evt.event_type === 'WS' || evt.title === 'Work Shift')) {
                             cellColor = [147, 196, 125];
-                          } else if (!evt) {
-                            const dayOfWeek = new Date(ds + 'T00:00:00').getDay();
-                            if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-                              cellColor = [147, 196, 125];
-                            }
                           }
 
                           const isGlobalHoliday = holidays.some(h => h.holiday_date === ds);
@@ -950,6 +965,7 @@ const CalendarPage = () => {
                     doc.text(`Generated: ${new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}`, 280, 200, { align: 'right' });
                   }
                   doc.save('Weekly Schedule Report.pdf');
+                  logSystemAction('DOWNLOAD_SCHEDULE_PDF', 'Admin downloaded Weekly Schedule Report PDF.');
                 }}
               >
                 <Download size={16} /> Weekly PDF
@@ -960,9 +976,6 @@ const CalendarPage = () => {
               <>
                 <button className="action-btn huddle-btn" onClick={() => setShowScheduleModal(true)}>
                   <Clock size={16} /> Request Schedule
-                </button>
-                <button className="action-btn" style={{ background: '#10b981', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/leave-tracker')}>
-                  <CalendarIcon size={16} /> Request Leave
                 </button>
               </>
             ) : (
@@ -976,7 +989,7 @@ const CalendarPage = () => {
                 <button className="action-btn create-btn" onClick={() => setShowAddModal(true)}>
                   <Plus size={16} /> Create
                 </button>
-                <button className="action-btn" style={{ background: '#10b981', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/leave-management')}>
+                <button className="action-btn" style={{ background: '#ef4444', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => navigate('/leave-management')}>
                   <CalendarIcon size={16} /> Manage Leaves
                 </button>
               </>

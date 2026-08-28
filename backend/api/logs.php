@@ -54,6 +54,24 @@ if ($method === 'GET') {
     $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo json_encode(["status" => "success", "data" => $logs]);
+} elseif ($method === 'POST') {
+    require_once '../config/logger.php';
+    $data = json_decode(file_get_contents("php://input"));
+    $user_id = $data->user_id ?? 0;
+    $action = $data->action ?? '';
+    $description = $data->description ?? '';
+
+    if (!$user_id || !$action || !$description) {
+        echo json_encode(["status" => "error", "message" => "Missing parameters for logging"]);
+        exit;
+    }
+
+    $success = logAction($conn, $user_id, $action, $description);
+    if ($success) {
+        echo json_encode(["status" => "success", "message" => "Log saved"]);
+    } else {
+        echo json_encode(["status" => "error", "message" => "Failed to save log"]);
+    }
 } else {
     echo json_encode(["status" => "error", "message" => "Method not allowed"]);
 }

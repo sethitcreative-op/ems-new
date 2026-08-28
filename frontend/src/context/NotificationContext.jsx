@@ -20,7 +20,7 @@ export const NotificationProvider = ({ children }) => {
 
   const addNotification = useCallback(async (notification) => {
     const now = Date.now();
-    // Prevent adding the exact same notification (same message+type) within the last 3 seconds
+    // Prevent adding the exact same toast (same message+type) within the last 3 seconds
     if (
       lastNotificationRef.current.message === notification.message &&
       lastNotificationRef.current.type === (notification.type || 'info') &&
@@ -32,53 +32,58 @@ export const NotificationProvider = ({ children }) => {
     lastNotificationRef.current = { message: notification.message, type: notification.type || 'info', time: now };
 
     const localId = Date.now() + Math.random();
-    const newNotification = {
+    const newToast = {
       timestamp: new Date(),
-      read: false,
       ...notification,
-      id: localId, // temporary local id until DB responds
+      id: localId,
     };
-    
-    // Add to local state for immediate feedback
-    setNotifications(prev => [newNotification, ...prev]);
-    setUnreadCount(prev => prev + 1);
     
     setToasts(prev => {
       // Prevent duplicate toasts on screen at the same time
       if (prev.some(t => t.message === notification.message && t.type === (notification.type || 'info'))) {
         return prev;
       }
-      return [...prev, newNotification];
+      return [...prev, newToast];
     });
     
     setTimeout(() => {
       removeToast(localId);
     }, 4000);
 
-    // Persist to database
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (user) {
-      try {
+    // Persist to backend and update bell dropdown
+    try {
+      const user = JSON.parse(localStorage.getItem('user'));
+      if (user) {
         const res = await fetch(`${API_BASE}/notifications.php`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: user.id,
             type: notification.type || 'info',
             message: notification.message
           })
         });
-        const resData = await res.json();
-        // CRITICAL FIX: Mark the DB-assigned id as already seen so the poller
-        // does not re-surface this same notification as a second toast.
-        if (resData && resData.id) {
-          seenNotificationIds.current.add(String(resData.id));
+        const data = await res.json();
+        
+        if (data.status === 'success' && data.id) {
+          // Add to seen so the poller doesn't toast it again
+          seenNotificationIds.current.add(String(data.id));
+          
+          // Add directly to dropdown list
+          const newDbNotif = {
+            id: data.id,
+            user_id: user.id,
+            type: notification.type || 'info',
+            message: notification.message,
+            is_read: 0,
+            created_at: new Date().toISOString()
+          };
+          setNotifications(prev => [newDbNotif, ...prev]);
+          setUnreadCount(prev => prev + 1);
         }
-      } catch (error) {
-        console.error("Failed to persist notification", error);
       }
+    } catch (e) {
+      console.error("Failed to persist notification", e);
     }
   }, [removeToast]);
 

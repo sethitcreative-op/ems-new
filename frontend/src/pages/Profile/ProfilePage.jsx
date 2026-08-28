@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import axios from 'axios';
-import { User, Briefcase, DollarSign, Clock, Mail, Phone, Shield, Edit2, X, Calendar, Hash, MapPin, Award, TrendingUp, Zap } from 'lucide-react';
+import { User, Briefcase, DollarSign, Clock, Mail, Phone, Shield, Edit2, X, Calendar, Hash, MapPin, Award, TrendingUp, Zap, Eye } from 'lucide-react';
 import { useNotification } from '../../context/NotificationContext';
 import './ProfilePage.css';
 import API_BASE from '../../config/api';
@@ -201,6 +201,12 @@ const ProfilePage = () => {
     if (pic.startsWith('http') || pic.startsWith('data:image')) return pic;
     if (pic.startsWith('img/')) return `/${pic}`;
     return `${API_BASE.replace('/api', '')}/${pic}`;
+  };
+
+  const maskGovId = (id) => {
+    if (!id) return 'Not provided';
+    if (id.length <= 4) return '*'.repeat(id.length);
+    return '*'.repeat(id.length - 4) + id.slice(-4);
   };
 
   const displayUser = selectedMember || user;
@@ -501,13 +507,7 @@ const ProfilePage = () => {
             </div>
             
             <div className="detail-content-wrap" style={{ padding: '20px' }}>
-              <div className="primary-id-section" style={{ marginBottom: '30px', padding: '20px', background: 'var(--surface-color)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                <h4 style={{ margin: '0 0 16px 0', fontSize: '15px', color: 'var(--text-color)' }}>Primary Government ID</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Number</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: '16px', fontWeight: '500' }}>{displayUser.id_number || 'Not provided'}</span>
-                </div>
-              </div>
+
 
               <h4 style={{ marginBottom: '16px', fontSize: '15px', color: 'var(--text-color)' }}>Uploaded IDs</h4>
               {govIdLoading ? (
@@ -526,22 +526,37 @@ const ProfilePage = () => {
                           <span style={{ fontWeight: '500', color: 'var(--text-color)' }}>{idRec.id_type}</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Number</span>
-                        <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{idRec.id_number}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ID Number</span>
+                          <span style={{ fontFamily: 'monospace', fontSize: '14px' }}>{maskGovId(idRec.id_number)}</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'right' }}>
+                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Date</span>
+                          <span style={{ fontSize: '13px' }}>{new Date(idRec.uploaded_at).toLocaleDateString()}</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Uploaded</span>
-                        <span style={{ fontSize: '13px' }}>{new Date(idRec.uploaded_at).toLocaleDateString()}</span>
+                      <div style={{ position: 'relative', marginTop: 'auto', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                        <div style={{
+                          position: 'absolute', top: '-10px', left: '-10px', right: '-10px', bottom: '-10px',
+                          backgroundImage: `url(${idRec.file_path.startsWith('img/') ? `/${idRec.file_path}` : `${API_BASE.replace('/api', '') === '' ? '/backend' : API_BASE.replace('/api', '')}/${idRec.file_path}`})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          filter: 'blur(5px)',
+                          opacity: 0.5,
+                          zIndex: 0
+                        }}></div>
+                        <a 
+                          href={idRec.file_path.startsWith('img/') ? `/${idRec.file_path}` : `${API_BASE.replace('/api', '') === '' ? '/backend' : API_BASE.replace('/api', '')}/${idRec.file_path}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}
+                        >
+                          <div style={{ background: 'var(--primary-color, #3b82f6)', color: '#fff', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', transition: 'transform 0.2s', cursor: 'pointer' }} onMouseOver={e => e.currentTarget.style.transform = 'scale(1.05)'} onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}>
+                            <Eye size={18} /> View Full Image
+                          </div>
+                        </a>
                       </div>
-                      <a 
-                        href={idRec.file_path.startsWith('img/') ? `/${idRec.file_path}` : `${API_BASE.replace('/api', '') === '' ? '/backend' : API_BASE.replace('/api', '')}/${idRec.file_path}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        style={{ marginTop: 'auto', background: 'var(--bg-color)', color: 'var(--primary-color)', padding: '8px', borderRadius: '8px', textAlign: 'center', textDecoration: 'none', fontSize: '13px', fontWeight: '500' }}
-                      >
-                        View Document
-                      </a>
                     </div>
                   ))}
                 </div>

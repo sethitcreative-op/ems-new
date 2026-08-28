@@ -117,6 +117,20 @@ elseif ($method === 'POST') {
 
     $schedule_option = $data->schedule_option ?? null;
 
+    // Check if a schedule already exists for the user on this date
+    $checkEventQuery = "SELECT id FROM events WHERE user_id = :user_id AND event_date = :event_date AND status != 'rejected' LIMIT 1";
+    $checkEventStmt = $conn->prepare($checkEventQuery);
+    $checkEventStmt->execute([':user_id' => $user_id, ':event_date' => $event_date]);
+    
+    $checkLeaveQuery = "SELECT id FROM leave_requests WHERE user_id = :user_id AND :event_date BETWEEN start_date AND end_date AND status != 'rejected' LIMIT 1";
+    $checkLeaveStmt = $conn->prepare($checkLeaveQuery);
+    $checkLeaveStmt->execute([':user_id' => $user_id, ':event_date' => $event_date]);
+    
+    if ($checkEventStmt->fetch() || $checkLeaveStmt->fetch()) {
+        echo json_encode(["status" => "error", "message" => "A schedule already exists for this date. Please edit the existing schedule to avoid duplication."]);
+        exit;
+    }
+
     if ($event_type === 'VL') {
         $year = date('Y', strtotime($event_date));
         $checkLimitStmt = $conn->prepare("SELECT COUNT(*) as request_count FROM leave_requests WHERE user_id = :user_id AND YEAR(start_date) = :year");
@@ -383,6 +397,14 @@ elseif ($method === 'PUT') {
                     $params[':status'] = $status;
                 }
                 $stmt->execute($params);
+                
+                $modifier_id = isset($data->modifier_id) ? $data->modifier_id : $user_id;
+                if ($is_admin) {
+                    logAction($conn, $modifier_id, 'EDIT_SCHEDULE', "Admin edited schedule (Event ID: {$event_id}) for Employee ID {$user_id}.");
+                } else {
+                    logAction($conn, $user_id, 'EDIT_REQUEST', "Employee edited their schedule request (Event ID: {$event_id}).");
+                }
+
                 echo json_encode(["status" => "success", "message" => "Event updated successfully"]);
             } catch(PDOException $e) {
                 echo json_encode(["status" => "error", "message" => "Could not update event details: " . $e->getMessage()]);

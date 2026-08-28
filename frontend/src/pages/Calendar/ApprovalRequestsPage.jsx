@@ -55,27 +55,71 @@ const ApprovalRequestsPage = () => {
 
   const fetchRequests = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/calendar.php?role=admin&user_id=${user.id}`);
-      if (res.data.status === 'success') {
-        const pending = res.data.data.filter(evt => evt.status === 'pending');
-        setRequests(groupRequests(pending));
+      const [calendarRes, leavesRes] = await Promise.all([
+        axios.get(`${API_BASE}/calendar.php?role=admin&user_id=${user.id}`),
+        axios.get(`${API_BASE}/leaves.php?action=requests&role=admin`)
+      ]);
+
+      let calendarPending = [];
+      if (calendarRes.data.status === 'success') {
+        const pending = calendarRes.data.data.filter(evt => evt.status === 'pending');
+        calendarPending = groupRequests(pending).map(req => ({ ...req, isLeave: false }));
       }
+
+      let leavePending = [];
+      if (leavesRes.data.status === 'success') {
+        leavePending = leavesRes.data.data.filter(req => req.status === 'pending').map(req => ({
+          isLeave: true,
+          id: req.id,
+          event_ids: [req.id],
+          user_id: req.user_id,
+          user_name: req.user_name,
+          start_date: req.start_date,
+          end_date: req.end_date,
+          event_type: 'Leave',
+          title: req.leave_type,
+          description: req.reason,
+          created_at: req.created_at,
+          total_days: req.total_days
+        }));
+      }
+
+      const combined = [...calendarPending, ...leavePending].sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at) : new Date(a.start_date);
+        const dateB = b.created_at ? new Date(b.created_at) : new Date(b.start_date);
+        return dateB - dateA;
+      });
+
+      setRequests(combined);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleUpdateStatus = async (ids, status) => {
+  const handleUpdateStatus = async (req, status) => {
     setLoading(true);
     try {
-      await Promise.all(ids.map(id => 
-        axios.put(`${API_BASE}/calendar.php`, {
-          id: id,
+      if (req.isLeave) {
+        await axios.put(`${API_BASE}/leaves.php`, {
+          action: 'update_status',
+          id: req.id,
           status: status,
-          admin_id: user.id,
-          approved_by_name: user.full_name
-        })
-      ));
+          admin_remarks: '',
+          user_id: req.user_id,
+          leave_type: req.title,
+          total_days: req.total_days,
+          start_date: req.start_date
+        });
+      } else {
+        await Promise.all(req.event_ids.map(id => 
+          axios.put(`${API_BASE}/calendar.php`, {
+            id: id,
+            status: status,
+            admin_id: user.id,
+            approved_by_name: user.full_name
+          })
+        ));
+      }
       fetchRequests();
     } catch (err) {
       console.error(err);
@@ -154,7 +198,7 @@ const ApprovalRequestsPage = () => {
                           <button 
                             className="btn btn-success" 
                             style={{ padding: '6px 12px' }}
-                            onClick={() => handleUpdateStatus(req.event_ids, 'approved')}
+                            onClick={() => handleUpdateStatus(req, 'approved')}
                             disabled={loading}
                             title="Approve"
                           >
@@ -163,7 +207,7 @@ const ApprovalRequestsPage = () => {
                           <button 
                             className="btn btn-danger" 
                             style={{ padding: '6px 12px' }}
-                            onClick={() => handleUpdateStatus(req.event_ids, 'rejected')}
+                            onClick={() => handleUpdateStatus(req, 'rejected')}
                             disabled={loading}
                             title="Reject"
                           >

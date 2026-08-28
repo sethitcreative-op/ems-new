@@ -9,10 +9,10 @@ $action = isset($_GET['action']) ? $_GET['action'] : (isset($data->action) ? $da
 
 function calculateTotalHours($am_in, $am_out, $pm_in, $pm_out) {
     $total_hours = 0;
-    $t_am_in = $am_in ? strtotime($am_in) : null;
-    $t_am_out = $am_out ? strtotime($am_out) : null;
-    $t_pm_in = $pm_in ? strtotime($pm_in) : null;
-    $t_pm_out = $pm_out ? strtotime($pm_out) : null;
+    $t_am_in = ($am_in && strpos($am_in, '1900-01-01') === false) ? strtotime($am_in) : null;
+    $t_am_out = ($am_out && strpos($am_out, '1900-01-01') === false) ? strtotime($am_out) : null;
+    $t_pm_in = ($pm_in && strpos($pm_in, '1900-01-01') === false) ? strtotime($pm_in) : null;
+    $t_pm_out = ($pm_out && strpos($pm_out, '1900-01-01') === false) ? strtotime($pm_out) : null;
 
     if ($t_am_in && $t_pm_out) {
         // We have start and end punches
@@ -93,14 +93,15 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
         UPDATE attendance a
         JOIN users u ON a.user_id = u.id
         SET a.total_hours = ROUND(
-                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
-                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
+                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL AND a.am_in > '2000-01-01' AND a.am_out > '2000-01-01', TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
+                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL AND a.pm_in > '2000-01-01' AND a.pm_out > '2000-01-01', TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
             , 2),
             a.earnings = ROUND((
-                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
-                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL, TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
+                (IF(a.am_in IS NOT NULL AND a.am_out IS NOT NULL AND a.am_in > '2000-01-01' AND a.am_out > '2000-01-01', TIMESTAMPDIFF(SECOND, a.am_in, a.am_out) / 3600, 0)) +
+                (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL AND a.pm_in > '2000-01-01' AND a.pm_out > '2000-01-01', TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
             ) * u.hourly_rate, 2)
-        WHERE (a.pm_in IS NOT NULL AND a.pm_out IS NULL) OR (a.am_in IS NOT NULL AND a.am_out IS NULL)
+        WHERE ( (a.pm_in IS NOT NULL AND a.pm_in > '2000-01-01' AND (a.pm_out IS NULL OR a.pm_out < '2000-01-01')) 
+             OR (a.am_in IS NOT NULL AND a.am_in > '2000-01-01' AND (a.am_out IS NULL OR a.am_out < '2000-01-01')) )
           AND a.date < :server_date
     ";
     $auto_close_stmt = $conn->prepare($auto_close_query);
@@ -229,6 +230,7 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
 
 } elseif ($action === 'edit_record') {
     // Admin Edit Record
+    $modifier_id = $data->modifier_id ?? 1;
     $record_id = $data->record_id;
     $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
     $am_out = isset($data->am_out) && $data->am_out !== '' ? $data->am_out : null;
@@ -264,12 +266,15 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
             ':record_id' => $record_id
         ]);
         
+        logAction($conn, $modifier_id ?? 1, 'DTR_EDIT_RECORD', "Admin edited attendance record for user ID {$record_user_id} on date {$record_date}.");
+
         echo json_encode(["status" => "success", "message" => "Record updated successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "Record not found"]);
     }
 } elseif ($action === 'add_record') {
     // Admin Add Record
+    $modifier_id = $data->modifier_id ?? 1;
     $user_id = $data->user_id;
     $date = $data->date;
     $am_in = isset($data->am_in) && $data->am_in !== '' ? $data->am_in : null;
@@ -308,17 +313,30 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
             ':status' => $status
         ]);
         
+        logAction($conn, $modifier_id ?? 1, 'DTR_ADD_RECORD', "Admin added attendance record for user ID {$user_id} on date {$date}.");
+        
         echo json_encode(["status" => "success", "message" => "Record added successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "User not found"]);
     }
 } elseif ($action === 'delete_record') {
+    $modifier_id = isset($_GET['modifier_id']) ? $_GET['modifier_id'] : (isset($data->modifier_id) ? $data->modifier_id : 1);
     $record_id = isset($_GET['record_id']) ? $_GET['record_id'] : (isset($data->record_id) ? $data->record_id : null);
     if ($record_id) {
-        $query = "DELETE FROM attendance WHERE id = :record_id";
-        $stmt = $conn->prepare($query);
-        $stmt->execute([':record_id' => $record_id]);
-        echo json_encode(["status" => "success", "message" => "Record deleted successfully"]);
+            // Fetch user ID for log
+            $fetch_uid = $conn->prepare("SELECT user_id FROM attendance WHERE id = :record_id");
+            $fetch_uid->execute([':record_id' => $record_id]);
+            $uid_res = $fetch_uid->fetchColumn();
+
+            $query = "DELETE FROM attendance WHERE id = :record_id";
+            $stmt = $conn->prepare($query);
+            $stmt->execute([':record_id' => $record_id]);
+            
+            if ($uid_res) {
+                logAction($conn, $modifier_id ?? 1, 'DTR_DELETE_RECORD', "Admin deleted attendance record for user ID {$uid_res}.");
+            }
+
+            echo json_encode(["status" => "success", "message" => "Record deleted successfully"]);
     } else {
         echo json_encode(["status" => "error", "message" => "Record ID required"]);
     }

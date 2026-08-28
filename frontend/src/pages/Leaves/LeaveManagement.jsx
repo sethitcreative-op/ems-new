@@ -5,6 +5,7 @@ import autoTable from 'jspdf-autotable';
 import { useNotification } from '../../context/NotificationContext';
 import { Check, X, Calendar as CalendarIcon, List, Pencil, Trash2, Users } from 'lucide-react';
 import API_BASE from '../../config/api';
+import { logSystemAction } from '../../utils/logger';
 
 const LEAVE_TYPES = ['Leave', 'Sick Leave', 'Emergency Leave', 'Maternity Leave', 'Paternity Leave', 'Other'];
 
@@ -178,7 +179,8 @@ const LeaveManagement = () => {
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
+    const dateOnly = dateStr.split(' ')[0];
+    const [y, m, d] = dateOnly.split('-');
     return new Date(y, m - 1, d).toLocaleDateString();
   };
 
@@ -266,6 +268,8 @@ const LeaveManagement = () => {
     a.href = url;
     a.download = viewMode === 'calendar' ? `leave_calendar_${year}.csv` : `leave_requests.csv`;
     a.click();
+    
+    logSystemAction('DOWNLOAD_LEAVE_TRACKER', `Admin downloaded Leave Tracker CSV (${a.download}).`);
   };
 
   const exportSummaryPDF = () => {
@@ -300,7 +304,7 @@ const LeaveManagement = () => {
     const tableRows = [];
 
     rows.forEach(row => {
-      const datesList = row.records.map(r => r.created_at ? new Date(r.created_at).toLocaleDateString() : new Date(r.start_date).toLocaleDateString()).join('\n');
+      const datesList = row.records.map(r => formatDate(r.created_at || r.start_date)).join('\n');
       const reasonsList = row.records.map(r => `${r.reason} (${r.total_days} day${r.total_days > 1 ? 's' : ''})`).join('\n');
       
       tableRows.push([
@@ -322,6 +326,7 @@ const LeaveManagement = () => {
     });
 
     doc.save(`Leave_Summary_${year}.pdf`);
+    logSystemAction('DOWNLOAD_LEAVE_SUMMARY', `Admin downloaded Leave Summary PDF for ${year}.`);
   };
 
   return (
@@ -429,16 +434,7 @@ const LeaveManagement = () => {
                       <td>{getStatusBadge(req.status)}</td>
                       <td style={{ textAlign: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'nowrap' }}>
-                          {req.status === 'pending' && (
-                            <>
-                              <button className="btn btn-primary" style={{ padding: '5px 8px', minWidth: '32px' }} title="Approve" onClick={() => setActionModal({ open: true, req, action: 'approved' })}>
-                                <Check size={15} />
-                              </button>
-                              <button className="btn btn-danger" style={{ padding: '5px 8px', minWidth: '32px' }} title="Reject" onClick={() => setActionModal({ open: true, req, action: 'rejected' })}>
-                                <X size={15} />
-                              </button>
-                            </>
-                          )}
+
                           {!isPastLeave(req.start_date) && (
                             <button className="btn" style={{ padding: '5px 8px', minWidth: '32px', background: '#6366f1', color: '#fff' }} title="Edit" onClick={() => openEditModal(req)}>
                               <Pencil size={15} />
@@ -564,7 +560,7 @@ const LeaveManagement = () => {
                             <ul style={{ margin: 0, paddingLeft: '16px' }}>
                               {row.records.map((r, i) => (
                                 <li key={i} style={{ marginBottom: '4px' }}>
-                                  {r.created_at ? new Date(r.created_at).toLocaleDateString() : new Date(r.start_date).toLocaleDateString()}
+                                  {formatDate(r.created_at || r.start_date)}
                                 </li>
                               ))}
                             </ul>

@@ -7,6 +7,7 @@ import { useNotification } from '../../context/NotificationContext';
 import './DtrPage.css';
 import API_BASE from '../../config/api';
 import CustomWeekPicker from '../../components/common/CustomWeekPicker';
+import { logSystemAction } from '../../utils/logger';
 
 const ActiveTimer = ({ activeShift }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -155,6 +156,7 @@ const DtrPage = () => {
   // Helper: format DATETIME or HH:MM:SS string to 12-hour format
   const formatTime = (datetimeStr, recordDate) => {
     if (!datetimeStr) return '--:--';
+    if (datetimeStr.includes('1900-01-01')) return '-- -- --';
     // Split by space to get time part if it's a datetime
     const [datePart, timePart] = datetimeStr.includes(' ') ? datetimeStr.split(' ') : [null, datetimeStr];
     const [hours, minutes] = timePart.split(':');
@@ -346,10 +348,10 @@ const DtrPage = () => {
         recordId: record.id,
         targetUserId: record.user_id,
         dateStr: record.date,
-        amIn: record.am_in ? record.am_in.split(' ')[1] : '',
-        amOut: record.am_out ? record.am_out.split(' ')[1] : '',
-        pmIn: record.pm_in ? record.pm_in.split(' ')[1] : '',
-        pmOut: record.pm_out ? record.pm_out.split(' ')[1] : '',
+        amIn: record.am_in ? (record.am_in.includes('1900-01-01') ? '-- -- --' : record.am_in.split(' ')[1]) : '',
+        amOut: record.am_out ? (record.am_out.includes('1900-01-01') ? '-- -- --' : record.am_out.split(' ')[1]) : '',
+        pmIn: record.pm_in ? (record.pm_in.includes('1900-01-01') ? '-- -- --' : record.pm_in.split(' ')[1]) : '',
+        pmOut: record.pm_out ? (record.pm_out.includes('1900-01-01') ? '-- -- --' : record.pm_out.split(' ')[1]) : '',
         status: record.status || 'Present'
       });
     } else {
@@ -370,15 +372,16 @@ const DtrPage = () => {
 
   const handleSaveModal = async () => {
     try {
-      const amInDate = editModal.amIn ? `${editModal.dateStr} ${editModal.amIn}` : '';
-      const amOutDate = editModal.amOut ? `${editModal.dateStr} ${editModal.amOut}` : '';
-      const pmInDate = editModal.pmIn ? `${editModal.dateStr} ${editModal.pmIn}` : '';
-      const pmOutDate = editModal.pmOut ? `${editModal.dateStr} ${editModal.pmOut}` : '';
+      const amInDate = editModal.amIn === '-- -- --' ? '1900-01-01 00:00:00' : (editModal.amIn ? `${editModal.dateStr} ${editModal.amIn}` : '');
+      const amOutDate = editModal.amOut === '-- -- --' ? '1900-01-01 00:00:00' : (editModal.amOut ? `${editModal.dateStr} ${editModal.amOut}` : '');
+      const pmInDate = editModal.pmIn === '-- -- --' ? '1900-01-01 00:00:00' : (editModal.pmIn ? `${editModal.dateStr} ${editModal.pmIn}` : '');
+      const pmOutDate = editModal.pmOut === '-- -- --' ? '1900-01-01 00:00:00' : (editModal.pmOut ? `${editModal.dateStr} ${editModal.pmOut}` : '');
 
       const payload = {
         action: editModal.mode === 'edit' ? 'edit_record' : 'add_record',
         record_id: editModal.recordId,
         user_id: editModal.targetUserId,
+        modifier_id: user.id,
         date: editModal.dateStr,
         am_in: amInDate,
         am_out: amOutDate,
@@ -407,7 +410,7 @@ const DtrPage = () => {
   const handleDeleteRecord = async (recordId) => {
     if (!window.confirm("Are you sure you want to delete this DTR record?")) return;
     try {
-      const res = await axios.get(`${API_BASE}/dtr.php?action=delete_record&record_id=${recordId}`);
+      const res = await axios.get(`${API_BASE}/dtr.php?action=delete_record&record_id=${recordId}&modifier_id=${user.id}`);
       if (res.data.status === 'success') {
         addNotification({ type: 'success', message: res.data.message });
         // Re-fetch all data sources so the DTR stays in sync with latest state
@@ -686,6 +689,7 @@ const DtrPage = () => {
     }
 
     doc.save(`Weekly Payroll Summary Report.pdf`);
+    logSystemAction('DOWNLOAD_PAYROLL', 'Admin downloaded Weekly Payroll Summary Report PDF.');
   };
 
   const handleEmployeePdfExport = () => {
@@ -782,6 +786,7 @@ const DtrPage = () => {
       });
 
       doc.save(`Attendance_Record_${user.full_name}_${dtrFilterValue}.pdf`);
+      logSystemAction('DOWNLOAD_ATTENDANCE', `User/Admin downloaded Attendance Record PDF for ${user.full_name}.`);
     };
 
     const exportPDF = (customStart = startDate, customEnd = endDate, exportType = 'custom', usersToExport = customExportUsers) => {
@@ -946,6 +951,7 @@ const DtrPage = () => {
       else if (exportType === 'yearly') fileName = 'Yearly Payroll Summary Report.pdf';
 
       doc.save(fileName);
+      logSystemAction('DOWNLOAD_PAYROLL', `Admin downloaded ${fileName}.`);
     };
 
     return (
@@ -1551,22 +1557,46 @@ const DtrPage = () => {
                   </div>
                   <div style={{ display: 'flex', gap: '16px' }}>
                     <div className="premium-select-group" style={{ flex: 1 }}>
-                      <label>AM IN Time</label>
-                      <input type="time" step="1" className="premium-input" value={editModal.amIn} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ margin: 0 }}>AM IN Time</label>
+                      </div>
+                      <input type="time" step="1" className="premium-input" style={{ width: '100%' }} value={editModal.amIn !== '-- -- --' ? editModal.amIn : ''} onChange={(e) => setEditModal({ ...editModal, amIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
                     </div>
                     <div className="premium-select-group" style={{ flex: 1 }}>
-                      <label>AM OUT Time</label>
-                      <input type="time" step="1" className="premium-input" value={editModal.amOut} onChange={(e) => setEditModal({ ...editModal, amOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ margin: 0 }}>AM OUT Time</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', margin: 0, fontWeight: '500', color: 'var(--text-muted)' }}>
+                          <input type="checkbox" checked={editModal.amOut === '-- -- --'} onChange={(e) => setEditModal({ ...editModal, amOut: e.target.checked ? '-- -- --' : '' })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                          Mispunch
+                        </label>
+                      </div>
+                      {editModal.amOut === '-- -- --' ? (
+                        <input type="text" className="premium-input" value="-- -- --" disabled style={{ width: '100%', color: 'var(--text-muted)', textAlign: 'center', letterSpacing: '2px' }} />
+                      ) : (
+                        <input type="time" step="1" className="premium-input" style={{ width: '100%' }} value={editModal.amOut} onChange={(e) => setEditModal({ ...editModal, amOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      )}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '16px' }}>
                     <div className="premium-select-group" style={{ flex: 1 }}>
-                      <label>PM IN Time</label>
-                      <input type="time" step="1" className="premium-input" value={editModal.pmIn} onChange={(e) => setEditModal({ ...editModal, pmIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ margin: 0 }}>PM IN Time</label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', margin: 0, fontWeight: '500', color: 'var(--text-muted)' }}>
+                          <input type="checkbox" checked={editModal.pmIn === '-- -- --'} onChange={(e) => setEditModal({ ...editModal, pmIn: e.target.checked ? '-- -- --' : '' })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                          Mispunch
+                        </label>
+                      </div>
+                      {editModal.pmIn === '-- -- --' ? (
+                        <input type="text" className="premium-input" value="-- -- --" disabled style={{ width: '100%', color: 'var(--text-muted)', textAlign: 'center', letterSpacing: '2px' }} />
+                      ) : (
+                        <input type="time" step="1" className="premium-input" style={{ width: '100%' }} value={editModal.pmIn} onChange={(e) => setEditModal({ ...editModal, pmIn: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      )}
                     </div>
                     <div className="premium-select-group" style={{ flex: 1 }}>
-                      <label>PM OUT Time</label>
-                      <input type="time" step="1" className="premium-input" value={editModal.pmOut} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label style={{ margin: 0 }}>PM OUT Time</label>
+                      </div>
+                      <input type="time" step="1" className="premium-input" style={{ width: '100%' }} value={editModal.pmOut !== '-- -- --' ? editModal.pmOut : ''} onChange={(e) => setEditModal({ ...editModal, pmOut: e.target.value })} disabled={['Absent', 'Leave', 'Holiday', 'Rescheduled'].includes(editModal.status)} />
                     </div>
                   </div>
                 </div>
