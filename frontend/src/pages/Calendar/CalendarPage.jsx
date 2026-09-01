@@ -1023,7 +1023,7 @@ const CalendarPage = () => {
                   >
                     <div className="date-header-row">
                       <span className="date-number">{cell.date.getDate()}</span>
-                      {combined.length > 0 && <span className="date-badge">{combined.length}</span>}
+                      {extraCount > 0 && <span className="date-badge">{extraCount}</span>}
                     </div>
                     <div className="events-container">
                       {displayedItems.map(item => {
