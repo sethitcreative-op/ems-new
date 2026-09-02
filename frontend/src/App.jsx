@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Login from './pages/Login/Login';
 import DashboardLayout from './components/layout/DashboardLayout';
 import DtrPage from './pages/DTR/DtrPage';
@@ -15,21 +15,46 @@ import LeaveManagement from './pages/Leaves/LeaveManagement';
 import { NotificationProvider } from './context/NotificationContext';
 
 const ProtectedRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  const tokenExpiry = localStorage.getItem('tokenExpiry');
-  const now = new Date().getTime();
+  const checkAuth = () => {
+    const token = localStorage.getItem('token');
+    const tokenExpiry = localStorage.getItem('tokenExpiry');
+    const now = new Date().getTime();
 
-  let isAuthenticated = false;
-  if (token && tokenExpiry && now < parseInt(tokenExpiry, 10)) {
-    isAuthenticated = true;
-  } else if (token) {
-    // Token exists but is expired or missing expiry
-    localStorage.removeItem('token');
-    localStorage.removeItem('tokenExpiry');
-    localStorage.removeItem('user');
+    if (!token || !tokenExpiry || now >= parseInt(tokenExpiry, 10)) {
+      if (token) {
+        // Token exists but is expired or missing expiry
+        localStorage.removeItem('token');
+        localStorage.removeItem('tokenExpiry');
+        localStorage.removeItem('user');
+      }
+      return false;
+    }
+    return true;
+  };
+
+  const [isAuthenticated, setIsAuthenticated] = useState(checkAuth());
+  const location = useLocation();
+
+  useEffect(() => {
+    const authStatus = checkAuth();
+    setIsAuthenticated(authStatus);
+    
+    // Periodically check if the token has expired while idle (every 1 minute)
+    const interval = setInterval(() => {
+      const currentAuth = checkAuth();
+      if (!currentAuth) {
+        setIsAuthenticated(false);
+      }
+    }, 60000);
+    
+    return () => clearInterval(interval);
+  }, [location.pathname]);
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" />;
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" />;
+  return children;
 };
 
 function ScrollToTop() {

@@ -3,7 +3,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #161064 !important;
+  background: #0f0946 !important;
   border-right: none !important;
   overflow-x: hidden;
   zoom: 1.11111;
@@ -12,7 +12,7 @@
 .sidebar-profile-section {
   display: flex;
   flex-direction: column;
-  background: #231766;
+  background: #1c0f68;
   align-items: center;
   padding: 24px 16px 16px;
   border-bottom: 1px solid rgba(7, 6, 6, 0.05);
@@ -136,13 +136,23 @@
 }
 
 @keyframes slideBgIn {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(0); }
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
 }
 
 @keyframes scaleYIn {
-  0% { transform: scaleY(0); }
-  100% { transform: scaleY(1); }
+  0% {
+    transform: scaleY(0);
+  }
+
+  100% {
+    transform: scaleY(1);
+  }
 }
 
 .nav-item.sub-item {

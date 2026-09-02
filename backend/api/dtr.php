@@ -67,7 +67,12 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
         $pm_in = $action === 'pm_in' ? $server_datetime : $record['pm_in'];
         $pm_out = $action === 'pm_out' ? $server_datetime : $record['pm_out'];
         
-        $total_hours = calculateTotalHours($am_in, $am_out, $pm_in, $pm_out);
+        if (!$pm_out || strpos($pm_out, '1900-01-01') !== false) {
+            // User requested not to calculate total hours until PM OUT is tagged
+            $total_hours = 0;
+        } else {
+            $total_hours = calculateTotalHours($am_in, $am_out, $pm_in, $pm_out);
+        }
         
         // Always resolve hourly_rate
         $rate = $record['hourly_rate'] ? $record['hourly_rate'] : 0;
@@ -101,7 +106,8 @@ if (in_array($action, ['am_in', 'am_out', 'pm_in', 'pm_out'])) {
                 (IF(a.pm_in IS NOT NULL AND a.pm_out IS NOT NULL AND a.pm_in > '2000-01-01' AND a.pm_out > '2000-01-01', TIMESTAMPDIFF(SECOND, a.pm_in, a.pm_out) / 3600, 0))
             ) * u.hourly_rate, 2)
         WHERE ( (a.pm_in IS NOT NULL AND a.pm_in > '2000-01-01' AND (a.pm_out IS NULL OR a.pm_out < '2000-01-01')) 
-             OR (a.am_in IS NOT NULL AND a.am_in > '2000-01-01' AND (a.am_out IS NULL OR a.am_out < '2000-01-01')) )
+             OR (a.am_in IS NOT NULL AND a.am_in > '2000-01-01' AND (a.am_out IS NULL OR a.am_out < '2000-01-01')) 
+             OR a.total_hours = 0 )
           AND a.date < :server_date
     ";
     $auto_close_stmt = $conn->prepare($auto_close_query);
